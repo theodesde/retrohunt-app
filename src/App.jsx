@@ -7,7 +7,6 @@ import Papa from 'papaparse';
 // ==================================================================================
 // ⚙️ CONFIGURATION GOOGLE SHEET
 // ==================================================================================
-// TON LIEN EST DÉJÀ INSÉRÉ ICI :
 const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS79h5TvhI7uVi0bKlipooX7h3AH4K5UwORpz6uyHZ8EW298KnZtpuQMNcHITUHm5zKs1X0JRXkCLSb/pub?gid=1712668653&single=true&output=csv";
 
 
@@ -63,15 +62,18 @@ export default function App() {
 
         // On nettoie et transforme les données pour qu'elles soient utilisables
         const cleanedShops = results.data
-          .filter(row => row.name && row.lat && row.lng) // Sécurité : on ne garde que les lignes complètes
+          // --- MODIFIÉ ICI : On vérifie les nouveaux noms de colonnes ---
+          .filter(row => row.name && row.Latitude && row.Longitude) 
           .map((row, index) => ({
             id: index + 1, // On crée un ID numérique à la volée
             name: row.name,
             city: row.city,
             address: row.address,
-            // IMPORTANT : Convertir les textes 'lat' et 'lng' en vrais nombres décimaux (gère points et virgules)
-            lat: parseFloat(row.lat.toString().replace(',', '.')), 
-            lng: parseFloat(row.lng.toString().replace(',', '.')),
+            // --- MODIFIÉ ICI : On lit 'Latitude' et 'Longitude' du Sheet ---
+            // IMPORTANT : On convertit en nombre décimal (gère points et virgules)
+            // On garde les clés internes 'lat' et 'lng' en minuscules pour que le reste de l'app fonctionne
+            lat: parseFloat(row.Latitude.toString().replace(',', '.')), 
+            lng: parseFloat(row.Longitude.toString().replace(',', '.')),
             specialty: row.specialty,
             // IMPORTANT : Transformer la chaîne "Tag1, Tag2" en tableau ["Tag1", "Tag2"]
             tags: row.tags ? row.tags.split(',').map(tag => tag.trim()).filter(tag => tag !== "") : [],
@@ -480,7 +482,7 @@ export default function App() {
               </div>
 
               <a 
-                href={`http://maps.google.com/?q=${encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
+                href={`http://googleusercontent.com/maps.google.com/6{encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-4 block w-full text-center py-3 border font-pixel text-[10px] hover:text-black transition-all uppercase"
