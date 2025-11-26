@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Gamepad2, Search, Plus, X, ExternalLink, Menu, Tag, Instagram, Mail, Loader2 } from 'lucide-react';
+import { MapPin, Gamepad2, Search, Plus, X, ExternalLink, Menu, Tag, Instagram, Mail, Loader2, Crown } from 'lucide-react';
 import emailjs from '@emailjs/browser';
 // IMPORT DU PARSEUR CSV
 import Papa from 'papaparse';
@@ -62,23 +62,20 @@ export default function App() {
 
         // On nettoie et transforme les données pour qu'elles soient utilisables
         const cleanedShops = results.data
-          // --- MODIFIÉ ICI : On vérifie les nouveaux noms de colonnes ---
           .filter(row => row.name && row.Latitude && row.Longitude) 
           .map((row, index) => ({
             id: index + 1, // On crée un ID numérique à la volée
             name: row.name,
             city: row.city,
             address: row.address,
-            // --- MODIFIÉ ICI : On lit 'Latitude' et 'Longitude' du Sheet ---
-            // IMPORTANT : On convertit en nombre décimal (gère points et virgules)
-            // On garde les clés internes 'lat' et 'lng' en minuscules pour que le reste de l'app fonctionne
             lat: parseFloat(row.Latitude.toString().replace(',', '.')), 
             lng: parseFloat(row.Longitude.toString().replace(',', '.')),
             specialty: row.specialty,
-            // IMPORTANT : Transformer la chaîne "Tag1, Tag2" en tableau ["Tag1", "Tag2"]
             tags: row.tags ? row.tags.split(',').map(tag => tag.trim()).filter(tag => tag !== "") : [],
             description: row.description,
-            verified: row.verified && row.verified.toLowerCase() === 'true' // Convertit le texte "true" en vrai booléen
+            verified: row.verified && row.verified.toLowerCase() === 'true',
+            // --- NOUVEAU : Lecture de la colonne Hall of Fame ---
+            hallOfFame: row.hallOfFame && row.hallOfFame.toLowerCase() === 'true'
           }));
 
         console.log("Données nettoyées:", cleanedShops);
@@ -158,7 +155,6 @@ export default function App() {
              mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [50, 50], maxZoom: 15 });
           }, 500);
        } catch(e) {
-          // Parfois fitBounds échoue si un seul point ou carte pas prête, on ignore
           console.log("Fitbounds ignoré");
        }
     }
@@ -182,7 +178,9 @@ export default function App() {
           .addTo(map)
           .bindPopup(`
             <div style="font-family: 'Inter', sans-serif; color: #111;">
-              <strong style="font-family: 'Courier New', monospace; text-transform: uppercase;">${shop.name}</strong><br/>
+              <strong style="font-family: 'Courier New', monospace; text-transform: uppercase;">${shop.name}</strong>
+              ${shop.hallOfFame ? `<span style="background-color: ${BRAND_YELLOW}; color: black; font-size: 9px; padding: 1px 4px; margin-left: 6px; border-radius: 2px; font-weight: bold;">👑 HALL OF FAME</span>` : ''}
+              <br/>
               ${shop.city}
             </div>
           `);
@@ -396,8 +394,14 @@ export default function App() {
                         : 'bg-[#1e1e2e] border-gray-700 hover:border-gray-500'}
                     `}
                   >
-                    <div className="flex justify-between items-start">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-bold text-sm uppercase tracking-wide shop-name-color">{shop.name}</h3>
+                      {/* --- BADGE HALL OF FAME (LISTE) --- */}
+                      {shop.hallOfFame && (
+                        <span className="bg-[#facc15] text-black text-[8px] px-1.5 py-0.5 font-pixel flex items-center gap-1 shadow-[1px_1px_0_rgba(0,0,0,0.5)]">
+                          <Crown size={8} /> HALL OF FAME
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 text-gray-400 text-xs mt-1">
                       <MapPin size={12} /> {shop.city}
@@ -446,9 +450,17 @@ export default function App() {
                 <X size={18} />
               </button>
               
-              <div className="flex items-center gap-2 mb-3">
-                <Gamepad2 style={{ color: SHOP_NAME_COLOR }} size={20} />
-                <h2 className="font-pixel text-xs uppercase leading-relaxed" style={{ color: SHOP_NAME_COLOR }}>{selectedShop.name}</h2>
+              <div className="flex flex-wrap items-center gap-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <Gamepad2 style={{ color: SHOP_NAME_COLOR }} size={20} />
+                  <h2 className="font-pixel text-xs uppercase leading-relaxed" style={{ color: SHOP_NAME_COLOR }}>{selectedShop.name}</h2>
+                </div>
+                {/* --- BADGE HALL OF FAME (PANNEAU DÉTAIL) --- */}
+                {selectedShop.hallOfFame && (
+                    <span className="bg-[#facc15] text-black text-[9px] px-2 py-1 font-pixel flex items-center gap-1 shadow-[2px_2px_0_rgba(0,0,0,0.5)] animate-pulse">
+                      <Crown size={10} /> HALL OF FAME
+                    </span>
+                )}
               </div>
               
               <p className="text-gray-300 text-sm mb-4 leading-relaxed">
@@ -482,7 +494,6 @@ export default function App() {
               </div>
 
               <a 
-                // C'est cette ligne qui a été corrigée pour un lien Google Maps propre :
                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
                 target="_blank"
                 rel="noreferrer"
@@ -501,7 +512,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* --- MODAL DE PROPOSITION --- */}
+      {/* --- MODAL DE PROPOSITION ( inchangée ) --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-[#181825] border-2 border-[#facc15] w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8">
