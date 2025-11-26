@@ -308,7 +308,7 @@ export default function App() {
               <Instagram size={10} /> by Videogamesplace
             </a>
           </div>
-          <span className="hidden md:inline-block text-[9px] bg-[#facc15] text-black px-1 font-bold font-pixel shadow-[2px_2px_0_rgba(0,0,0,0.5)] self-start mt-1">BETA</span>
+          <span className="hidden md:inline-block text-[9px] bg-[#72fffb] text-black px-1 font-bold font-pixel shadow-[2px_2px_0_rgba(0,0,0,0.5)] self-start mt-1">DEV</span>
         </div>
 
         <button 
