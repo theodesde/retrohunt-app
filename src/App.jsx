@@ -8,20 +8,18 @@ import Papa from 'papaparse';
 // ==================================================================================
 const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS79h5TvhI7uVi0bKlipooX7h3AH4K5UwORpz6uyHZ8EW298KnZtpuQMNcHITUHm5zKs1X0JRXkCLSb/pub?gid=1712668653&single=true&output=csv";
 
-// Configuration des pays avec URLs D'IMAGES pour les drapeaux (plus fiable que les émojis)
+// Configuration des pays avec URLs D'IMAGES pour les drapeaux
 const COUNTRIES = {
   FR: { 
     center: [46.603354, 1.888334], 
     zoom: 6, 
     label: 'France',
-    // URL d'une icône de drapeau français propre
     iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.5.0/flags/4x3/fr.svg'
   },
   JP: { 
     center: [36.204824, 138.252924], 
     zoom: 7, 
     label: 'Japon',
-    // URL d'une icône de drapeau japonais propre
     iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.5.0/flags/4x3/jp.svg'
   }
 };
@@ -131,7 +129,8 @@ export default function App() {
       const target = COUNTRIES[currentCountry];
       mapInstanceRef.current.flyTo(target.center, target.zoom, {
         animate: true,
-        duration: 3.5
+        // CORRECTION ANIMATION 2/2 : Durée augmentée pour laisser le temps de charger
+        duration: 5 
       });
       setSearchTerm("");
       setSelectedShop(null);
@@ -300,26 +299,25 @@ export default function App() {
           </button>
           <div className="text-2xl animate-bounce">🕹️</div>
           <div className="flex flex-col justify-center">
-            {/* TITRE AVEC SÉLECTEUR DE PAYS (IMAGES DRAPEAUX) */}
-            <div className="flex items-baseline gap-2">
+            {/* TITRE AVEC SÉLECTEUR DE PAYS */}
+            {/* CORRECTION HEADER 1/2 : 'items-center' pour le centrage vertical */}
+            <div className="flex items-center gap-2">
                <h1 className="font-pixel text-[10px] md:text-xs text-white tracking-widest text-shadow-sm uppercase">
                  RetroHunt
                </h1>
-               <div className="flex gap-1 ml-2 items-center">
+               <div className="flex gap-3 ml-2 items-center">
                  {Object.keys(COUNTRIES).map((countryCode) => (
                    <button
                      key={countryCode}
                      onClick={() => setCurrentCountry(countryCode)}
-                     // Suppression des styles de texte, ajout d'un reset focus
                      className="focus:outline-none shrink-0"
                      title={`Aller au ${COUNTRIES[countryCode].label}`}
                    >
-                     {/* IMAGE DU DRAPEAU */}
                      <img 
                        src={COUNTRIES[countryCode].iconUrl} 
                        alt={COUNTRIES[countryCode].label}
-                       // Styles de l'image : taille, arrondi, transition, effets de survol et d'opacité
-                       className={`w-8 h-6 object-cover rounded-sm transition-all duration-300 hover:scale-125 ${currentCountry === countryCode ? 'opacity-100 scale-110 drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'opacity-50 grayscale hover:opacity-100 hover:grayscale-0'}`}
+                       // CORRECTION HEADER 2/2 : Ombre plus douce (rgba...0.5)
+                       className={`w-8 h-6 object-cover rounded-md transition-all duration-300 hover:scale-125 ${currentCountry === countryCode ? 'opacity-100 scale-110 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]' : 'opacity-50 grayscale hover:opacity-100 hover:grayscale-0'}`}
                      />
                    </button>
                  ))}
@@ -458,7 +456,8 @@ export default function App() {
 
         {/* --- MAP CONTAINER --- */}
         <div className="flex-1 relative bg-[#0f0f15] min-h-0">
-          <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1]" />
+          {/* CORRECTION ANIMATION 1/2 : Fond sombre pour camoufler les tuiles blanches */}
+          <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1] bg-[#11111b]" />
           
           {/* --- INFO PANEL --- */}
           {selectedShop && (
@@ -513,7 +512,7 @@ export default function App() {
               </div>
 
               <a 
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
+                href={`http://googleusercontent.com/maps.google.com/1{encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-4 block w-full text-center py-3 border font-pixel text-[10px] hover:text-black transition-all uppercase"
