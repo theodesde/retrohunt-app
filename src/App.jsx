@@ -482,7 +482,8 @@ export default function App() {
               </div>
 
               <a 
-                href={`http://googleusercontent.com/maps.google.com/6{encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
+                // C'est cette ligne qui a été corrigée pour un lien Google Maps propre :
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-4 block w-full text-center py-3 border font-pixel text-[10px] hover:text-black transition-all uppercase"
