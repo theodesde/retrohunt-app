@@ -1,63 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Gamepad2, Search, Plus, X, ExternalLink, Menu, Tag, Instagram, Mail } from 'lucide-react';
-// IMPORT EMAILJS : Nécessaire pour l'envoi de mail
+import { MapPin, Gamepad2, Search, Plus, X, ExternalLink, Menu, Tag, Instagram, Mail, Loader2 } from 'lucide-react';
 import emailjs from '@emailjs/browser';
+// IMPORT DU PARSEUR CSV
+import Papa from 'papaparse';
 
 // ==================================================================================
-// 🛠️ ZONE ADMIN : GESTION DES BOUTIQUES
+// ⚙️ CONFIGURATION GOOGLE SHEET
 // ==================================================================================
-const INITIAL_SHOPS = [
-  {
-    id: 1,
-    name: "Game Spirit",
-    city: "Lyon",
-    address: "23 Quai Jean Moulin, 69002 Lyon",
-    lat: 45.7640,
-    lng: 4.8357,
-    specialty: "Import Japon & Arcade",
-    tags: ["Import Japon", "Arcade", "Rétrogaming"],
-    description: "Une institution lyonnaise. Un sous-sol arcade incroyable et énormément d'import.",
-    verified: true
-  },
-  {
-    id: 2,
-    name: "Trader Games",
-    city: "Paris",
-    address: "4 Blvd Voltaire, 75011 Paris",
-    lat: 48.8665,
-    lng: 2.3675,
-    specialty: "Rétrogaming généraliste",
-    tags: ["Rétrogaming", "Import Japon", "Figurines"],
-    description: "Le boulevard Voltaire est légendaire. Trader Games a un stock massif.",
-    verified: true
-  },
-  {
-    id: 3,
-    name: "Retrogameplay",
-    city: "Nantes",
-    address: "16 Rue des 3 Croissants, 44000 Nantes",
-    lat: 47.2163,
-    lng: -1.5539,
-    specialty: "Hardware & Réparations",
-    tags: ["Réparations", "Rétrogaming"],
-    description: "Super boutique avec un atelier de réparation sur place.",
-    verified: true
-  },
-  {
-    id: 4,
-    name: "Gemba Games",
-    city: "Lille",
-    address: "12 Rue du Sec Arembault, 59800 Lille",
-    lat: 50.6365,
-    lng: 3.0635,
-    specialty: "Current gen & Goodies",
-    tags: ["Next Gen", "Goodies"],
-    description: "Petite boutique très sympa au coeur de Lille.",
-    verified: false
-  }
-];
+// TON LIEN EST DÉJÀ INSÉRÉ ICI :
+const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS79h5TvhI7uVi0bKlipooX7h3AH4K5UwORpz6uyHZ8EW298KnZtpuQMNcHITUHm5zKs1X0JRXkCLSb/pub?gid=1712668653&single=true&output=csv";
 
-// 🛠️ ZONE ADMIN : LISTE DES TAGS
+
+// On démarre avec une liste vide, elle sera remplie par le Sheet.
+const INITIAL_SHOPS = [];
+
+// 🛠️ ZONE ADMIN : LISTE DES TAGS (Reste utile pour le filtre et le formulaire)
 const AVAILABLE_TAGS = [
   "Rétrogaming",
   "Next Gen",
@@ -68,14 +25,12 @@ const AVAILABLE_TAGS = [
   "Goodies"
 ];
 
-// NOTE : CONTACT_EMAIL n'est plus utile ici, c'est géré par EmailJS maintenant.
-
-// ==================================================================================
-// ⛔ FIN DE LA ZONE ADMIN
 // ==================================================================================
 
 export default function App() {
-  const [shops, setShops] = useState(INITIAL_SHOPS);
+  // On initialise les shops avec une liste vide
+  const [shops, setShops] = useState([]);
+  const [isLoading, setIsLoading] = useState(true); // Nouvel état pour gérer le chargement
   const [selectedShop, setSelectedShop] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -84,7 +39,7 @@ export default function App() {
   const [newShopForm, setNewShopForm] = useState({ 
     name: '', city: '', address: '', tags: [], note: '' 
   });
-  const [submitStatus, setSubmitStatus] = useState(null); // 'loading', 'success', ou 'error'
+  const [submitStatus, setSubmitStatus] = useState(null);
 
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -94,6 +49,48 @@ export default function App() {
   const BRAND_PINK = '#ff5ac6';   
   const BRAND_YELLOW = '#facc15'; 
   const SHOP_NAME_COLOR = '#72fffb'; 
+
+  // --- NOUVEAU : CHARGEMENT DES DONNÉES GOOGLE SHEET ---
+  useEffect(() => {
+    setIsLoading(true); // On commence le chargement
+    
+    Papa.parse(GOOGLE_SHEET_CSV_URL, {
+      download: true,
+      header: true, // Dit à PapaParse d'utiliser la première ligne comme clés (name, city...)
+      skipEmptyLines: true, // Ignore les lignes vides du tableau
+      complete: (results) => {
+        console.log("Données brutes reçues de Google Sheet:", results.data);
+
+        // On nettoie et transforme les données pour qu'elles soient utilisables
+        const cleanedShops = results.data
+          .filter(row => row.name && row.lat && row.lng) // Sécurité : on ne garde que les lignes complètes
+          .map((row, index) => ({
+            id: index + 1, // On crée un ID numérique à la volée
+            name: row.name,
+            city: row.city,
+            address: row.address,
+            // IMPORTANT : Convertir les textes 'lat' et 'lng' en vrais nombres décimaux (gère points et virgules)
+            lat: parseFloat(row.lat.toString().replace(',', '.')), 
+            lng: parseFloat(row.lng.toString().replace(',', '.')),
+            specialty: row.specialty,
+            // IMPORTANT : Transformer la chaîne "Tag1, Tag2" en tableau ["Tag1", "Tag2"]
+            tags: row.tags ? row.tags.split(',').map(tag => tag.trim()).filter(tag => tag !== "") : [],
+            description: row.description,
+            verified: row.verified && row.verified.toLowerCase() === 'true' // Convertit le texte "true" en vrai booléen
+          }));
+
+        console.log("Données nettoyées:", cleanedShops);
+        setShops(cleanedShops); // On met à jour l'application avec les vraies données
+        setIsLoading(false); // Le chargement est fini
+      },
+      error: (error) => {
+        console.error("Erreur lors du chargement du Sheet:", error);
+        setIsLoading(false);
+        alert("Erreur de connexion à la base de données Google Sheet. Vérifiez le lien.");
+      }
+    });
+  }, []); // Le tableau vide [] veut dire "Fais ça une seule fois au démarrage"
+
 
   // --- INITIALISATION CARTE ---
   useEffect(() => {
@@ -128,6 +125,7 @@ export default function App() {
   const initMap = () => {
     if (!window.L || mapInstanceRef.current) return;
 
+    // On centre la carte par défaut sur la France
     const map = window.L.map(mapRef.current).setView([46.603354, 1.888334], 6);
     mapInstanceRef.current = map;
 
@@ -137,13 +135,32 @@ export default function App() {
       maxZoom: 19
     }).addTo(map);
 
-    updateMarkers(map);
+    // On ne lance updateMarkers ici que si on a déjà des shops chargés
+    if (shops.length > 0) {
+      updateMarkers(map);
+    }
   };
 
+  // Ce useEffect se lance quand la liste 'shops' change (donc après le chargement Google)
   useEffect(() => {
-    if (!window.L || !mapInstanceRef.current) return;
+    if (!window.L || !mapInstanceRef.current || shops.length === 0) return;
+    
     updateMarkers(mapInstanceRef.current);
-  }, [shops]);
+    
+    // Si le chargement est fini et qu'on a des boutiques, on ajuste la vue pour toutes les voir
+    if (!isLoading && shops.length > 0 && Object.keys(markersRef.current).length > 0) {
+       const group = new window.L.featureGroup(Object.values(markersRef.current));
+       try {
+          // Petit délai pour laisser la carte s'initialiser
+          setTimeout(() => {
+             mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [50, 50], maxZoom: 15 });
+          }, 500);
+       } catch(e) {
+          // Parfois fitBounds échoue si un seul point ou carte pas prête, on ignore
+          console.log("Fitbounds ignoré");
+       }
+    }
+  }, [shops, isLoading]);
 
   const updateMarkers = (map) => {
     const retroIcon = window.L.divIcon({
@@ -157,20 +174,23 @@ export default function App() {
     markersRef.current = {};
 
     shops.forEach(shop => {
-      const marker = window.L.marker([shop.lat, shop.lng], { icon: retroIcon })
-        .addTo(map)
-        .bindPopup(`
-          <div style="font-family: 'Inter', sans-serif; color: #111;">
-            <strong style="font-family: 'Courier New', monospace; text-transform: uppercase;">${shop.name}</strong><br/>
-            ${shop.city}
-          </div>
-        `);
-      
-      marker.on('click', () => {
-        setSelectedShop(shop);
-      });
+      // Sécurité : on vérifie qu'on a bien des coordonnées valides
+      if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
+        const marker = window.L.marker([shop.lat, shop.lng], { icon: retroIcon })
+          .addTo(map)
+          .bindPopup(`
+            <div style="font-family: 'Inter', sans-serif; color: #111;">
+              <strong style="font-family: 'Courier New', monospace; text-transform: uppercase;">${shop.name}</strong><br/>
+              ${shop.city}
+            </div>
+          `);
+        
+        marker.on('click', () => {
+          setSelectedShop(shop);
+        });
 
-      markersRef.current[shop.id] = marker;
+        markersRef.current[shop.id] = marker;
+      }
     });
   };
 
@@ -190,33 +210,27 @@ export default function App() {
     });
   };
 
-  // --- GESTION ENVOI PAR EMAIL (MODIFIÉ POUR EMAILJS) ---
+  // --- GESTION ENVOI PAR EMAIL (EMAILJS) ---
   const handleSuggestSubmit = (e) => {
     e.preventDefault();
-    setSubmitStatus('loading'); // Affiche "ENVOI EN COURS..."
+    setSubmitStatus('loading');
 
-    // Préparation des données à envoyer au template EmailJS
-    // Les clés (name, city...) doivent correspondre à vos variables {{...}} dans le template
     const templateParams = {
       name: newShopForm.name,
       city: newShopForm.city,
       address: newShopForm.address,
-      tags: newShopForm.tags.join(', '), // Transforme le tableau de tags en une chaîne lisible
+      tags: newShopForm.tags.join(', '),
       note: newShopForm.note
     };
 
-    // --- ENVOI VIA EMAILJS ---
-    // Remplacez les valeurs ci-dessous par vos vrais identifiants si nécessaire
+    // Tes identifiants EmailJS sont ici
     const serviceID = 'service_arqmija';
     const templateID = 'template_sdd0pom';
     const publicKey = 'XeofrijQDBJpyYeWi';
 
     emailjs.send(serviceID, templateID, templateParams, publicKey)
       .then((response) => {
-         console.log('SUCCÈS!', response.status, response.text);
-         setSubmitStatus('success'); // Affiche le message de succès
-         
-         // Ferme la modale et reset le formulaire après 2.5 secondes
+         setSubmitStatus('success');
          setTimeout(() => {
            setSubmitStatus(null);
            setIsModalOpen(false);
@@ -224,7 +238,7 @@ export default function App() {
          }, 2500);
       }, (error) => {
          console.error('ÉCHEC...', error);
-         setSubmitStatus('error'); // Gère le cas d'erreur
+         setSubmitStatus('error');
          alert("Oups, une erreur est survenue lors de l'envoi. Réessaie plus tard.");
          setSubmitStatus(null);
       });
@@ -232,7 +246,7 @@ export default function App() {
 
   const flyToShop = (shop) => {
     setSelectedShop(shop);
-    if (mapInstanceRef.current) {
+    if (mapInstanceRef.current && shop.lat && shop.lng) {
       mapInstanceRef.current.flyTo([shop.lat, shop.lng], 13, { duration: 1.5 });
       const marker = markersRef.current[shop.id];
       if (marker) marker.openPopup();
@@ -266,7 +280,6 @@ export default function App() {
         .shop-name-color { color: ${SHOP_NAME_COLOR}; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        /* Curseur d'attente quand le bouton est désactivé pendant l'envoi */
         .cursor-wait { cursor: wait; }
       `}</style>
 
@@ -321,85 +334,100 @@ export default function App() {
           md:h-full
           ${isSidebarOpen ? 'md:w-80' : 'md:w-0'}
         `}>
-          <div className="p-4 border-b border-gray-700 flex flex-col gap-3 shrink-0">
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
-              <input 
-                type="text" 
-                placeholder="Ville, boutique, tag..." 
-                className="w-full bg-[#11111b] border border-gray-600 rounded p-2 pl-10 text-sm text-white focus:outline-none focus:border-[#ff5ac6] focus:ring-1 focus:ring-[#ff5ac6]"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              {searchTerm && (
-                <button onClick={() => setSearchTerm('')} className="absolute right-3 top-2.5 text-gray-500 hover:text-white">
-                  <X size={16} />
-                </button>
-              )}
+          
+          {/* --- ÉTAT DE CHARGEMENT --- */}
+          {isLoading ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-[#facc15] p-8 text-center gap-4 animate-pulse">
+               <Loader2 size={32} className="animate-spin" />
+               <p className="font-pixel text-xs leading-relaxed">
+                 CONNEXION AU SATELLITE GOOGLE...<br/>
+                 TÉLÉCHARGEMENT DES DONNÉES...
+               </p>
             </div>
-
-            <div className="flex flex-wrap gap-1.5 pb-2">
-                {AVAILABLE_TAGS.map(tag => (
-                    <button
-                        key={tag}
-                        onClick={(e) => searchByTag(e, tag)}
-                        className={`
-                            px-2 py-1 text-[8px] rounded-full border transition-all font-medium font-pixel
-                            ${searchTerm === tag 
-                                ? `bg-[${BRAND_PINK}] text-white border-[${BRAND_PINK}] shadow-[0_0_8px_${BRAND_PINK}]` 
-                                : 'bg-[#1e1e2e] text-gray-400 border-gray-600 hover:border-gray-400 hover:text-white'}
-                        `}
-                    >
-                        {tag}
+          ) : (
+            /* --- CONTENU NORMAL QUAND CHARGÉ --- */
+            <>
+              <div className="p-4 border-b border-gray-700 flex flex-col gap-3 shrink-0">
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+                  <input 
+                    type="text" 
+                    placeholder="Ville, boutique, tag..." 
+                    className="w-full bg-[#11111b] border border-gray-600 rounded p-2 pl-10 text-sm text-white focus:outline-none focus:border-[#ff5ac6] focus:ring-1 focus:ring-[#ff5ac6]"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                  {searchTerm && (
+                    <button onClick={() => setSearchTerm('')} className="absolute right-3 top-2.5 text-gray-500 hover:text-white">
+                      <X size={16} />
                     </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 pb-2">
+                    {AVAILABLE_TAGS.map(tag => (
+                        <button
+                            key={tag}
+                            onClick={(e) => searchByTag(e, tag)}
+                            className={`
+                                px-2 py-1 text-[8px] rounded-full border transition-all font-medium font-pixel
+                                ${searchTerm === tag 
+                                    ? `bg-[${BRAND_PINK}] text-white border-[${BRAND_PINK}] shadow-[0_0_8px_${BRAND_PINK}]` 
+                                    : 'bg-[#1e1e2e] text-gray-400 border-gray-600 hover:border-gray-400 hover:text-white'}
+                            `}
+                        >
+                            {tag}
+                        </button>
+                    ))}
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                {filteredShops.map(shop => (
+                  <div 
+                    key={shop.id}
+                    onClick={() => flyToShop(shop)}
+                    className={`
+                      p-3 rounded border cursor-pointer transition-all hover:translate-x-1
+                      ${selectedShop?.id === shop.id 
+                        ? `bg-[${BRAND_PINK}]/20 border-[${BRAND_PINK}] shadow-[inset_0_0_10px_rgba(255,90,198,0.2)]` 
+                        : 'bg-[#1e1e2e] border-gray-700 hover:border-gray-500'}
+                    `}
+                  >
+                    <div className="flex justify-between items-start">
+                      <h3 className="font-bold text-sm uppercase tracking-wide shop-name-color">{shop.name}</h3>
+                    </div>
+                    <div className="flex items-center gap-1 text-gray-400 text-xs mt-1">
+                      <MapPin size={12} /> {shop.city}
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {shop.tags && shop.tags.slice(0, 3).map((tag, idx) => (
+                        <span 
+                          key={idx} 
+                          onClick={(e) => searchByTag(e, tag)}
+                          className={`text-[9px] bg-[#111] border border-gray-700 px-1 rounded hover:border-[${BRAND_PINK}] hover:text-[${BRAND_PINK}] transition-colors cursor-pointer ${searchTerm === tag ? 'text-[#ff5ac6] border-[#ff5ac6]' : 'text-gray-400'}`}
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                      {shop.tags && shop.tags.length > 3 && <span className="text-[9px] text-gray-500">...</span>}
+                    </div>
+                  </div>
                 ))}
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-2 space-y-2">
-            {filteredShops.map(shop => (
-              <div 
-                key={shop.id}
-                onClick={() => flyToShop(shop)}
-                className={`
-                  p-3 rounded border cursor-pointer transition-all hover:translate-x-1
-                  ${selectedShop?.id === shop.id 
-                    ? `bg-[${BRAND_PINK}]/20 border-[${BRAND_PINK}] shadow-[inset_0_0_10px_rgba(255,90,198,0.2)]` 
-                    : 'bg-[#1e1e2e] border-gray-700 hover:border-gray-500'}
-                `}
-              >
-                <div className="flex justify-between items-start">
-                  <h3 className="font-bold text-sm uppercase tracking-wide shop-name-color">{shop.name}</h3>
-                </div>
-                <div className="flex items-center gap-1 text-gray-400 text-xs mt-1">
-                  <MapPin size={12} /> {shop.city}
-                </div>
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {shop.tags && shop.tags.slice(0, 3).map((tag, idx) => (
-                    <span 
-                      key={idx} 
-                      onClick={(e) => searchByTag(e, tag)}
-                      className={`text-[9px] bg-[#111] border border-gray-700 px-1 rounded hover:border-[${BRAND_PINK}] hover:text-[${BRAND_PINK}] transition-colors cursor-pointer ${searchTerm === tag ? 'text-[#ff5ac6] border-[#ff5ac6]' : 'text-gray-400'}`}
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                  {shop.tags && shop.tags.length > 3 && <span className="text-[9px] text-gray-500">...</span>}
-                </div>
+                
+                {filteredShops.length === 0 && (
+                  <div className="text-center p-8 text-gray-500 text-sm">
+                    Aucune boutique trouvée pour "{searchTerm}".<br/>
+                    <button onClick={() => setSearchTerm('')} style={{ color: BRAND_PINK }} className="underline mt-2">Effacer le filtre</button>
+                  </div>
+                )}
               </div>
-            ))}
-            
-            {filteredShops.length === 0 && (
-              <div className="text-center p-8 text-gray-500 text-sm">
-                Aucune boutique trouvée pour "{searchTerm}".<br/>
-                <button onClick={() => setSearchTerm('')} style={{ color: BRAND_PINK }} className="underline mt-2">Effacer le filtre</button>
-              </div>
-            )}
-          </div>
 
-          <div className="p-3 text-[10px] text-gray-500 text-center border-t border-gray-800 font-pixel shrink-0">
-            {filteredShops.length} BOUTIQUES RÉPERTORIÉES
-          </div>
+              <div className="p-3 text-[10px] text-gray-500 text-center border-t border-gray-800 font-pixel shrink-0">
+                {filteredShops.length} BOUTIQUES RÉPERTORIÉES
+              </div>
+            </>
+          )}
         </div>
 
         {/* --- MAP CONTAINER --- */}
@@ -452,7 +480,7 @@ export default function App() {
               </div>
 
               <a 
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
+                href={`http://maps.google.com/?q=${encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-4 block w-full text-center py-3 border font-pixel text-[10px] hover:text-black transition-all uppercase"
