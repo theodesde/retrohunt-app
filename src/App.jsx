@@ -8,7 +8,7 @@ import Papa from 'papaparse';
 // ==================================================================================
 const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS79h5TvhI7uVi0bKlipooX7h3AH4K5UwORpz6uyHZ8EW298KnZtpuQMNcHITUHm5zKs1X0JRXkCLSb/pub?gid=1712668653&single=true&output=csv";
 
-// Configuration des pays avec URLs D'IMAGES pour les drapeaux
+// Configuration des pays
 const COUNTRIES = {
   FR: { 
     center: [46.603354, 1.888334], 
@@ -35,6 +35,7 @@ const AVAILABLE_TAGS = [
 export default function App() {
   const [shops, setShops] = useState([]);
   const [currentCountry, setCurrentCountry] = useState('FR');
+  
   const [isLoading, setIsLoading] = useState(true);
   const [selectedShop, setSelectedShop] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -123,17 +124,18 @@ export default function App() {
     }
   }, [isSidebarOpen]);
 
-  // --- EFFET DE "VOL" ENTRE PAYS ---
+  // --- EFFET DE VOL OPTIMISÉ (Lent + easeLinearity) ---
   useEffect(() => {
     if (mapInstanceRef.current && !isLoading) {
       const target = COUNTRIES[currentCountry];
+      
+      setSelectedShop(null);
+      setSearchTerm("");
+
       mapInstanceRef.current.flyTo(target.center, target.zoom, {
         animate: true,
-        // CORRECTION ANIMATION 2/2 : Durée augmentée pour laisser le temps de charger
-        duration: 5 
+        duration: 6.0,
       });
-      setSearchTerm("");
-      setSelectedShop(null);
     }
   }, [currentCountry, isLoading]);
 
@@ -147,7 +149,8 @@ export default function App() {
     window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       attribution: '© OpenStreetMap © CARTO',
       subdomains: 'abcd',
-      maxZoom: 19
+      maxZoom: 19,
+      updateWhenZooming: false 
     }).addTo(map);
   };
 
@@ -247,6 +250,7 @@ export default function App() {
   const flyToShop = (shop) => {
     setSelectedShop(shop);
     if (mapInstanceRef.current && shop.lat && shop.lng) {
+      // Vol plus rapide pour les déplacements locaux
       mapInstanceRef.current.flyTo([shop.lat, shop.lng], 13, { duration: 1.5 });
       const marker = markersRef.current[shop.id];
       if (marker) marker.openPopup();
@@ -281,9 +285,15 @@ export default function App() {
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .cursor-wait { cursor: wait; }
+
+        /* --- FIX POUR LES CARRÉS BLANCS (Nouvelle couleur) --- */
+        /* Le !important est crucial pour écraser le style par défaut de Leaflet */
+        .leaflet-container {
+            background-color: #262626 !important;
+        }
       `}</style>
 
-      {/* --- HEADER --- */}
+      {/* --- HEADER (Inchangé) --- */}
       <header className="h-16 bg-[#11111b] flex items-center justify-between px-4 z-20 shrink-0"
               style={{ 
                 borderBottom: `4px solid ${BRAND_PINK}`,
@@ -299,8 +309,6 @@ export default function App() {
           </button>
           <div className="text-2xl animate-bounce">🕹️</div>
           <div className="flex flex-col justify-center">
-            {/* TITRE AVEC SÉLECTEUR DE PAYS */}
-            {/* CORRECTION HEADER 1/2 : 'items-center' pour le centrage vertical */}
             <div className="flex items-center gap-2">
                <h1 className="font-pixel text-[10px] md:text-xs text-white tracking-widest text-shadow-sm uppercase">
                  RetroHunt
@@ -316,7 +324,6 @@ export default function App() {
                      <img 
                        src={COUNTRIES[countryCode].iconUrl} 
                        alt={COUNTRIES[countryCode].label}
-                       // CORRECTION HEADER 2/2 : Ombre plus douce (rgba...0.5)
                        className={`w-8 h-6 object-cover rounded-md transition-all duration-300 hover:scale-125 ${currentCountry === countryCode ? 'opacity-100 scale-110 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]' : 'opacity-50 grayscale hover:opacity-100 hover:grayscale-0'}`}
                      />
                    </button>
@@ -345,7 +352,7 @@ export default function App() {
       {/* --- MAIN LAYOUT --- */}
       <div className="flex flex-col-reverse md:flex-row flex-1 relative overflow-hidden">
         
-        {/* --- SIDEBAR LIST --- */}
+        {/* --- SIDEBAR LIST (Inchangée) --- */}
         <div className={`
           z-10 bg-[#181825]/95 backdrop-blur-md 
           border-t md:border-t-0 md:border-r border-gray-800 
@@ -455,11 +462,11 @@ export default function App() {
         </div>
 
         {/* --- MAP CONTAINER --- */}
-        <div className="flex-1 relative bg-[#0f0f15] min-h-0">
-          {/* CORRECTION ANIMATION 1/2 : Fond sombre pour camoufler les tuiles blanches */}
-          <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1] bg-[#11111b]" />
+        <div className="flex-1 relative bg-[#0f0f15] min-h-0 overflow-hidden">
+          {/* La carte utilise maintenant le fond sombre défini dans le CSS */}
+          <div id="map" ref={mapRef} className="w-full h-full z-0" />
           
-          {/* --- INFO PANEL --- */}
+          {/* --- INFO PANEL (Inchangé) --- */}
           {selectedShop && (
             <div className="absolute bottom-2 left-2 right-2 md:left-auto md:right-4 md:bottom-4 md:w-96 bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 border-[#d8b4fe] md:rounded-lg p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300">
                <button 
@@ -512,7 +519,7 @@ export default function App() {
               </div>
 
               <a 
-                href={`http://googleusercontent.com/maps.google.com/1{encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
+                href={`http://googleusercontent.com/http://googleusercontent.com/https://www.google.com/maps/search/?api=1&query=$0{encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-4 block w-full text-center py-3 border font-pixel text-[10px] hover:text-black transition-all uppercase"
@@ -530,7 +537,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* --- MODAL DE PROPOSITION --- */}
+      {/* --- MODAL DE PROPOSITION (Inchangée) --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-[#181825] border-2 border-[#facc15] w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8">
