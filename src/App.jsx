@@ -1,35 +1,34 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapPin, Gamepad2, Search, Plus, X, ExternalLink, Menu, Tag, Instagram, Mail, Loader2, Crown } from 'lucide-react';
 import emailjs from '@emailjs/browser';
-// IMPORT DU PARSEUR CSV
 import Papa from 'papaparse';
 
 // ==================================================================================
-// ⚙️ CONFIGURATION GOOGLE SHEET
+// ⚙️ CONFIGURATION - FRANCE UNIQUEMENT (PROD)
 // ==================================================================================
 const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS79h5TvhI7uVi0bKlipooX7h3AH4K5UwORpz6uyHZ8EW298KnZtpuQMNcHITUHm5zKs1X0JRXkCLSb/pub?gid=1712668653&single=true&output=csv";
 
+// Configuration du pays PAR DÉFAUT (Fixée sur la France)
+const DEFAULT_COUNTRY = { 
+  code: 'FR',
+  center: [46.603354, 1.888334], 
+  zoom: 6, 
+  label: 'France',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.5.0/flags/4x3/fr.svg'
+};
 
-// On démarre avec une liste vide, elle sera remplie par le Sheet.
-const INITIAL_SHOPS = [];
-
-// 🛠️ ZONE ADMIN : LISTE DES TAGS (Reste utile pour le filtre et le formulaire)
 const AVAILABLE_TAGS = [
-  "Rétrogaming",
-  "Next Gen",
-  "Import Japon",
-  "Arcade",
-  "Figurines",
-  "Réparations",
-  "Goodies"
+  "Rétrogaming", "Next Gen", "Import Japon", "Arcade", "Figurines", "Réparations", "Goodies"
 ];
 
 // ==================================================================================
 
 export default function App() {
-  // On initialise les shops avec une liste vide
   const [shops, setShops] = useState([]);
-  const [isLoading, setIsLoading] = useState(true); // Nouvel état pour gérer le chargement
+  // On fixe le pays sur la France
+  const currentCountry = 'FR'; 
+  
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedShop, setSelectedShop] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -49,46 +48,42 @@ export default function App() {
   const BRAND_YELLOW = '#facc15'; 
   const SHOP_NAME_COLOR = '#72fffb'; 
 
-  // --- NOUVEAU : CHARGEMENT DES DONNÉES GOOGLE SHEET ---
+  // --- CHARGEMENT DES DONNÉES ---
   useEffect(() => {
-    setIsLoading(true); // On commence le chargement
+    setIsLoading(true);
     
     Papa.parse(GOOGLE_SHEET_CSV_URL, {
       download: true,
-      header: true, // Dit à PapaParse d'utiliser la première ligne comme clés (name, city...)
-      skipEmptyLines: true, // Ignore les lignes vides du tableau
+      header: true,
+      skipEmptyLines: true,
       complete: (results) => {
-        console.log("Données brutes reçues de Google Sheet:", results.data);
-
-        // On nettoie et transforme les données pour qu'elles soient utilisables
         const cleanedShops = results.data
-          .filter(row => row.name && row.Latitude && row.Longitude) 
+          .filter(row => row.name && row.Latitude && row.Longitude && row.isPublished && row.isPublished.toLowerCase() === 'true') 
           .map((row, index) => ({
-            id: index + 1, // On crée un ID numérique à la volée
+            id: index + 1,
             name: row.name,
             city: row.city,
             address: row.address,
+            country: row.country ? row.country.toUpperCase() : 'FR', 
             lat: parseFloat(row.Latitude.toString().replace(',', '.')), 
             lng: parseFloat(row.Longitude.toString().replace(',', '.')),
             specialty: row.specialty,
             tags: row.tags ? row.tags.split(',').map(tag => tag.trim()).filter(tag => tag !== "") : [],
             description: row.description,
             verified: row.verified && row.verified.toLowerCase() === 'true',
-            // --- NOUVEAU : Lecture de la colonne Hall of Fame ---
             hallOfFame: row.hallOfFame && row.hallOfFame.toLowerCase() === 'true'
           }));
 
-        console.log("Données nettoyées:", cleanedShops);
-        setShops(cleanedShops); // On met à jour l'application avec les vraies données
-        setIsLoading(false); // Le chargement est fini
+        setShops(cleanedShops);
+        setIsLoading(false);
       },
       error: (error) => {
-        console.error("Erreur lors du chargement du Sheet:", error);
+        console.error("Erreur loading Sheet:", error);
         setIsLoading(false);
-        alert("Erreur de connexion à la base de données Google Sheet. Vérifiez le lien.");
+        alert("Erreur de connexion à la base de données.");
       }
     });
-  }, []); // Le tableau vide [] veut dire "Fais ça une seule fois au démarrage"
+  }, []);
 
 
   // --- INITIALISATION CARTE ---
@@ -121,43 +116,48 @@ export default function App() {
     }
   }, [isSidebarOpen]);
 
+  // --- CENTRAGE INITIAL ---
+  useEffect(() => {
+    if (!mapInstanceRef.current || isLoading) return;
+    
+    if (shops.length > 0) {
+      const allMarkers = shops
+        .filter(shop => shop.lat && shop.lng)
+        .map(shop => window.L.marker([shop.lat, shop.lng]));
+
+      if (allMarkers.length > 0) {
+        const group = new window.L.featureGroup(allMarkers);
+        setTimeout(() => {
+             try {
+                mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [50, 50], maxZoom: 13 });
+             } catch (e) { console.log('Fitbounds error', e); }
+        }, 100);
+        return;
+      }
+    }
+    
+    mapInstanceRef.current.setView(DEFAULT_COUNTRY.center, DEFAULT_COUNTRY.zoom);
+  }, [shops, isLoading]); 
+
+
   const initMap = () => {
     if (!window.L || mapInstanceRef.current) return;
-
-    // On centre la carte par défaut sur la France
-    const map = window.L.map(mapRef.current).setView([46.603354, 1.888334], 6);
+    const initialTarget = DEFAULT_COUNTRY;
+    const map = window.L.map(mapRef.current).setView(initialTarget.center, initialTarget.zoom);
     mapInstanceRef.current = map;
 
     window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       attribution: '© OpenStreetMap © CARTO',
       subdomains: 'abcd',
-      maxZoom: 19
+      maxZoom: 19,
+      updateWhenZooming: false 
     }).addTo(map);
-
-    // On ne lance updateMarkers ici que si on a déjà des shops chargés
-    if (shops.length > 0) {
-      updateMarkers(map);
-    }
   };
 
-  // Ce useEffect se lance quand la liste 'shops' change (donc après le chargement Google)
+  // --- MARQUEURS ---
   useEffect(() => {
     if (!window.L || !mapInstanceRef.current || shops.length === 0) return;
-    
     updateMarkers(mapInstanceRef.current);
-    
-    // Si le chargement est fini et qu'on a des boutiques, on ajuste la vue pour toutes les voir
-    if (!isLoading && shops.length > 0 && Object.keys(markersRef.current).length > 0) {
-       const group = new window.L.featureGroup(Object.values(markersRef.current));
-       try {
-          // Petit délai pour laisser la carte s'initialiser
-          setTimeout(() => {
-             mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [50, 50], maxZoom: 15 });
-          }, 500);
-       } catch(e) {
-          console.log("Fitbounds ignoré");
-       }
-    }
   }, [shops, isLoading]);
 
   const updateMarkers = (map) => {
@@ -172,7 +172,6 @@ export default function App() {
     markersRef.current = {};
 
     shops.forEach(shop => {
-      // Sécurité : on vérifie qu'on a bien des coordonnées valides
       if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
         const marker = window.L.marker([shop.lat, shop.lng], { icon: retroIcon })
           .addTo(map)
@@ -186,7 +185,7 @@ export default function App() {
           `);
         
         marker.on('click', () => {
-          setSelectedShop(shop);
+          flyToShop(shop); 
         });
 
         markersRef.current[shop.id] = marker;
@@ -194,6 +193,7 @@ export default function App() {
     });
   };
 
+  // --- FILTRAGE ---
   const filteredShops = shops.filter(shop => 
     shop.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     shop.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -210,7 +210,7 @@ export default function App() {
     });
   };
 
-  // --- GESTION ENVOI PAR EMAIL (EMAILJS) ---
+  // --- EMAIL ---
   const handleSuggestSubmit = (e) => {
     e.preventDefault();
     setSubmitStatus('loading');
@@ -220,16 +220,16 @@ export default function App() {
       city: newShopForm.city,
       address: newShopForm.address,
       tags: newShopForm.tags.join(', '),
-      note: newShopForm.note
+      note: newShopForm.note,
+      country: DEFAULT_COUNTRY.code 
     };
 
-    // Tes identifiants EmailJS sont ici
     const serviceID = 'service_arqmija';
     const templateID = 'template_sdd0pom';
     const publicKey = 'XeofrijQDBJpyYeWi';
 
     emailjs.send(serviceID, templateID, templateParams, publicKey)
-      .then((response) => {
+      .then(() => {
          setSubmitStatus('success');
          setTimeout(() => {
            setSubmitStatus(null);
@@ -239,17 +239,28 @@ export default function App() {
       }, (error) => {
          console.error('ÉCHEC...', error);
          setSubmitStatus('error');
-         alert("Oups, une erreur est survenue lors de l'envoi. Réessaie plus tard.");
+         alert("Erreur lors de l'envoi.");
          setSubmitStatus(null);
       });
   };
 
+  const handleDeselectShop = () => {
+      setSelectedShop(null);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.flyTo(DEFAULT_COUNTRY.center, DEFAULT_COUNTRY.zoom, { duration: 1.5 });
+      }
+  };
+
   const flyToShop = (shop) => {
-    setSelectedShop(shop);
-    if (mapInstanceRef.current && shop.lat && shop.lng) {
-      mapInstanceRef.current.flyTo([shop.lat, shop.lng], 13, { duration: 1.5 });
-      const marker = markersRef.current[shop.id];
-      if (marker) marker.openPopup();
+    if (selectedShop && selectedShop.id === shop.id) {
+        handleDeselectShop();
+    } else {
+        setSelectedShop(shop);
+        if (mapInstanceRef.current && shop.lat && shop.lng) {
+            mapInstanceRef.current.flyTo([shop.lat, shop.lng], 13, { duration: 1.5 });
+            const marker = markersRef.current[shop.id];
+            if (marker) marker.openPopup();
+        }
     }
   };
 
@@ -281,6 +292,13 @@ export default function App() {
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .cursor-wait { cursor: wait; }
+
+        .leaflet-container {
+            background-color: #1D1D1D !important; 
+        }
+        #map {
+             filter: grayscale(20%) contrast(1.1); 
+        }
       `}</style>
 
       {/* --- HEADER --- */}
@@ -299,16 +317,21 @@ export default function App() {
           </button>
           <div className="text-2xl animate-bounce">🕹️</div>
           <div className="flex flex-col justify-center">
-            <h1 className="font-pixel text-[10px] md:text-xs text-white tracking-widest text-shadow-sm uppercase">
-              RetroHunt <span style={{ color: BRAND_PINK }}>FR</span>
-            </h1>
+            <div className="flex items-center gap-2">
+               <h1 className="font-pixel text-[10px] md:text-xs text-white tracking-widest text-shadow-sm uppercase">
+                 RetroHunt
+               </h1>
+               {/* AJOUT DU TEXTE FR + BADGE BETA VISIBLE PARTOUT */}
+               <span className="font-pixel text-[10px] md:text-xs tracking-widest text-shadow-sm uppercase" style={{ color: BRAND_PINK }}>FR</span>
+               <span className="inline-block text-[9px] bg-[#facc15] text-black px-1 font-bold font-pixel shadow-[2px_2px_0_rgba(0,0,0,0.5)] self-start">BETA</span>
+            </div>
+
             <a href="https://www.instagram.com/videogamesplace/" target="_blank" rel="noreferrer" 
                className="flex items-center gap-1 text-[8px] font-sans font-bold mt-1 hover:text-white transition-colors"
                style={{ color: BRAND_PINK }}>
               <Instagram size={10} /> by Videogamesplace
             </a>
           </div>
-          <span className="hidden md:inline-block text-[9px] bg-[#facc15] text-black px-1 font-bold font-pixel shadow-[2px_2px_0_rgba(0,0,0,0.5)] self-start mt-1">BETA</span>
         </div>
 
         <button 
@@ -340,19 +363,19 @@ export default function App() {
             <div className="flex-1 flex flex-col items-center justify-center text-[#facc15] p-8 text-center gap-4 animate-pulse">
                <Loader2 size={32} className="animate-spin" />
                <p className="font-pixel text-xs leading-relaxed">
-                 CONNEXION AU SATELLITE GOOGLE...<br/>
+                 CONNEXION AU SATELITE GOOGLE...<br/>
                  TÉLÉCHARGEMENT DES DONNÉES...
                </p>
             </div>
           ) : (
-            /* --- CONTENU NORMAL QUAND CHARGÉ --- */
+            /* --- CONTENU NORMAL --- */
             <>
               <div className="p-4 border-b border-gray-700 flex flex-col gap-3 shrink-0">
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
                   <input 
                     type="text" 
-                    placeholder="Ville, boutique, tag..." 
+                    placeholder={`Rechercher ici ${DEFAULT_COUNTRY.label}...`} 
                     className="w-full bg-[#11111b] border border-gray-600 rounded p-2 pl-10 text-sm text-white focus:outline-none focus:border-[#ff5ac6] focus:ring-1 focus:ring-[#ff5ac6]"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -363,7 +386,6 @@ export default function App() {
                     </button>
                   )}
                 </div>
-
                 <div className="flex flex-wrap gap-1.5 pb-2">
                     {AVAILABLE_TAGS.map(tag => (
                         <button
@@ -396,7 +418,6 @@ export default function App() {
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-bold text-sm uppercase tracking-wide shop-name-color">{shop.name}</h3>
-                      {/* --- BADGE HALL OF FAME (LISTE) --- */}
                       {shop.hallOfFame && (
                         <span className="bg-[#facc15] text-black text-[8px] px-1.5 py-0.5 font-pixel flex items-center gap-1 shadow-[1px_1px_0_rgba(0,0,0,0.5)]">
                           <Crown size={8} /> HALL OF FAME
@@ -423,14 +444,14 @@ export default function App() {
                 
                 {filteredShops.length === 0 && (
                   <div className="text-center p-8 text-gray-500 text-sm">
-                    Aucune boutique trouvée pour "{searchTerm}".<br/>
+                    Aucune boutique trouvée pour "{searchTerm}" ici {DEFAULT_COUNTRY.label}.<br/>
                     <button onClick={() => setSearchTerm('')} style={{ color: BRAND_PINK }} className="underline mt-2">Effacer le filtre</button>
                   </div>
                 )}
               </div>
 
               <div className="p-3 text-[10px] text-gray-500 text-center border-t border-gray-800 font-pixel shrink-0">
-                {filteredShops.length} BOUTIQUES RÉPERTORIÉES
+                {filteredShops.length} BOUTIQUES {DEFAULT_COUNTRY.label}
               </div>
             </>
           )}
@@ -442,9 +463,11 @@ export default function App() {
           
           {/* --- INFO PANEL --- */}
           {selectedShop && (
-            <div className="absolute bottom-2 left-2 right-2 md:left-auto md:right-4 md:bottom-4 md:w-96 bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 border-[#d8b4fe] md:rounded-lg p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300">
+            <div className="absolute 
+                        bottom-1 left-1 right-1 md:left-auto md:right-4 md:bottom-4 md:w-96 
+                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 border-[#d8b4fe] md:rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300">
                <button 
-                onClick={() => setSelectedShop(null)}
+                onClick={handleDeselectShop}
                 className="absolute top-2 right-2 text-gray-500 hover:text-white"
               >
                 <X size={18} />
@@ -455,7 +478,6 @@ export default function App() {
                   <Gamepad2 style={{ color: SHOP_NAME_COLOR }} size={20} />
                   <h2 className="font-pixel text-xs uppercase leading-relaxed" style={{ color: SHOP_NAME_COLOR }}>{selectedShop.name}</h2>
                 </div>
-                {/* --- BADGE HALL OF FAME (PANNEAU DÉTAIL) --- */}
                 {selectedShop.hallOfFame && (
                     <span className="bg-[#facc15] text-black text-[9px] px-2 py-1 font-pixel flex items-center gap-1 shadow-[2px_2px_0_rgba(0,0,0,0.5)] animate-pulse">
                       <Crown size={10} /> HALL OF FAME
@@ -512,7 +534,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* --- MODAL DE PROPOSITION ( inchangée ) --- */}
+      {/* --- MODAL DE PROPOSITION (Inchangée) --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-[#181825] border-2 border-[#facc15] w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8">
@@ -524,7 +546,7 @@ export default function App() {
             </button>
 
             <h2 className="font-pixel text-[#facc15] text-xs mb-6 text-center border-b border-gray-700 pb-4">
-              PROPOSER UN AJOUT
+              Let's go hunt !
             </h2>
 
             {submitStatus === 'success' ? (
@@ -539,7 +561,7 @@ export default function App() {
             ) : (
               <form onSubmit={handleSuggestSubmit} className="space-y-4">
                 <p className="text-xs text-gray-400 mb-4 italic text-center">
-                  Aide-nous à cartographier les meilleures adresses de France.
+                  Aide-nous à cartographier les meilleures adresses. N'oublie pas de préciser le pays !
                 </p>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -549,18 +571,18 @@ export default function App() {
                       required
                       type="text" 
                       className="w-full bg-black border border-gray-700 text-white p-3 focus:border-[#facc15] outline-none transition-colors text-sm"
-                      placeholder="Ex: Retro Cave"
+                      placeholder="Ex: Super Potato"
                       value={newShopForm.name}
                       onChange={e => setNewShopForm({...newShopForm, name: e.target.value})}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Ville*</label>
+                    <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Ville et Pays*</label>
                     <input 
                       required
                       type="text" 
                       className="w-full bg-black border border-gray-700 text-white p-3 focus:border-[#facc15] outline-none transition-colors text-sm"
-                      placeholder="Ex: Bordeaux"
+                      placeholder="Ex: Tokyo, Japon"
                       value={newShopForm.city}
                       onChange={e => setNewShopForm({...newShopForm, city: e.target.value})}
                     />
@@ -573,7 +595,7 @@ export default function App() {
                     required
                     type="text" 
                     className="w-full bg-black border border-gray-700 text-white p-3 focus:border-[#facc15] outline-none transition-colors text-sm"
-                    placeholder="Ex: 12 Rue des Gamers, 33000 Bordeaux"
+                    placeholder="Ex: 1 Chome-11-2 Sotokanda, Chiyoda City"
                     value={newShopForm.address}
                     onChange={e => setNewShopForm({...newShopForm, address: e.target.value})}
                   />
