@@ -40,8 +40,6 @@ export default function App() {
   const [selectedShop, setSelectedShop] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  
-  // FIX DU BUG : Rétablissement de la syntaxe correcte
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   const [newShopForm, setNewShopForm] = useState({ 
@@ -289,14 +287,18 @@ export default function App() {
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .cursor-wait { cursor: wait; }
 
-        /* --- STYLES DE LA CARTE MIS À JOUR pour correspondre aux couleurs de prod --- */
+        /* --- STYLES DE LA CARTE FINALEMENT CORRIGÉS --- */
         .leaflet-container {
             /* Fix des trous de tuiles sur la couleur de fond de la prod */
-            background-color: #1C1C1C !important; 
+            background-color: #1D1D1D !important; 
+        }
+        #map {
+             /* Filtre pour maintenir l'ambiance dark et la lisibilité */
+             filter: grayscale(20%) contrast(1.1); 
         }
       `}</style>
 
-      {/* --- HEADER (Inchangé) --- */}
+      {/* --- HEADER --- */}
       <header className="h-16 bg-[#11111b] flex items-center justify-between px-4 z-20 shrink-0"
               style={{ 
                 borderBottom: `4px solid ${BRAND_PINK}`,
@@ -355,7 +357,7 @@ export default function App() {
       {/* --- MAIN LAYOUT --- */}
       <div className="flex flex-col-reverse md:flex-row flex-1 relative overflow-hidden">
         
-        {/* --- SIDEBAR LIST (Inchangée) --- */}
+        {/* --- SIDEBAR LIST --- */}
         <div className={`
           z-10 bg-[#181825]/95 backdrop-blur-md 
           border-t md:border-t-0 md:border-r border-gray-800 
@@ -371,7 +373,8 @@ export default function App() {
             <div className="flex-1 flex flex-col items-center justify-center text-[#facc15] p-8 text-center gap-4 animate-pulse">
                <Loader2 size={32} className="animate-spin" />
                <p className="font-pixel text-xs leading-relaxed">
-                 CHARGEMENT DE LA CARTE DU MONDE...
+                 CONNEXION AU SATELITE GOOGLE...<br/>
+                 TÉLÉCHARGEMENT DES DONNÉES...
                </p>
             </div>
           ) : (
@@ -465,8 +468,8 @@ export default function App() {
         </div>
 
         {/* --- MAP CONTAINER --- */}
-        <div className="flex-1 relative bg-[#0f0f15] min-h-0 overflow-hidden">
-          <div id="map" ref={mapRef} className="w-full h-full z-0" />
+        <div className="flex-1 relative bg-[#0f0f15] min-h-0">
+          <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1]" />
           
           {/* --- INFO PANEL (Inchangé) --- */}
           {selectedShop && (
@@ -521,7 +524,7 @@ export default function App() {
               </div>
 
               <a 
-                href={`http://googleusercontent.com/http://googleusercontent.com/https://www.google.com/maps/search/?api=1&query=$0{encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-4 block w-full text-center py-3 border font-pixel text-[10px] hover:text-black transition-all uppercase"
@@ -603,59 +606,59 @@ export default function App() {
                     placeholder="Ex: 1 Chome-11-2 Sotokanda, Chiyoda City"
                     value={newShopForm.address}
                     onChange={e => setNewShopForm({...newShopForm, address: e.target.value})}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs uppercase text-gray-500 mb-2 font-bold flex items-center gap-2">
-                    <Tag size={12} /> Catégories (Tags)
-                  </label>
-                  <div className="flex flex-wrap gap-2 p-3 bg-black/40 border border-gray-800 rounded">
-                    {AVAILABLE_TAGS.map(tag => (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => toggleTag(tag)}
-                        className={`
-                          text-[10px] px-2 py-1 rounded border transition-all font-medium
-                          ${newShopForm.tags.includes(tag) 
-                            ? 'bg-[#facc15] text-black border-[#facc15] shadow-[0_0_10px_rgba(250,204,21,0.3)]' 
-                            : 'bg-[#181825] text-gray-400 border-gray-600 hover:border-gray-400'}
-                        `}
-                      >
-                        {tag}
-                      </button>
-                    ))}
+                    />
                   </div>
-                  <p className="text-[9px] text-gray-500 mt-1 text-right">
-                    {newShopForm.tags.length} sélectionné(s)
-                  </p>
-                </div>
 
-                <div>
-                  <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
-                  <textarea 
-                    className="w-full bg-black border border-gray-700 text-white p-3 focus:border-[#facc15] outline-none transition-colors h-20 resize-none text-sm"
-                    placeholder="Horaires ? Anecdote ? Précision sur le pays ?"
-                    value={newShopForm.note}
-                    onChange={e => setNewShopForm({...newShopForm, note: e.target.value})}
-                  ></textarea>
-                </div>
+                  <div>
+                    <label className="block text-xs uppercase text-gray-500 mb-2 font-bold flex items-center gap-2">
+                      <Tag size={12} /> Catégories (Tags)
+                    </label>
+                    <div className="flex flex-wrap gap-2 p-3 bg-black/40 border border-gray-800 rounded">
+                      {AVAILABLE_TAGS.map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => toggleTag(tag)}
+                          className={`
+                            text-[10px] px-2 py-1 rounded border transition-all font-medium
+                            ${newShopForm.tags.includes(tag) 
+                              ? 'bg-[#facc15] text-black border-[#facc15] shadow-[0_0_10px_rgba(250,204,21,0.3)]' 
+                              : 'bg-[#181825] text-gray-400 border-gray-600 hover:border-gray-400'}
+                          `}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-gray-500 mt-1 text-right">
+                      {newShopForm.tags.length} sélectionné(s)
+                    </p>
+                  </div>
 
-                <button 
-                  disabled={submitStatus === 'loading'}
-                  type="submit" 
-                  className={`w-full bg-[#facc15] text-black font-pixel text-[10px] py-4 hover:bg-yellow-300 transition-colors uppercase disabled:opacity-50 disabled:cursor-wait shadow-[0_4px_0_#b45309] active:shadow-none active:translate-y-1 ${submitStatus === 'loading' ? 'cursor-wait' : ''}`}
-                >
-                  {submitStatus === 'loading' ? 'ENVOI EN COURS...' : 'ENVOYER LA PROPOSITION'}
-                </button>
-              </form>
-            )}
+                  <div>
+                    <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
+                    <textarea 
+                      className="w-full bg-black border border-gray-700 text-white p-3 focus:border-[#facc15] outline-none transition-colors h-20 resize-none text-sm"
+                      placeholder="Horaires ? Anecdote ? Précision sur le pays ?"
+                      value={newShopForm.note}
+                      onChange={e => setNewShopForm({...newShopForm, note: e.target.value})}
+                    ></textarea>
+                  </div>
+
+                  <button 
+                    disabled={submitStatus === 'loading'}
+                    type="submit" 
+                    className={`w-full bg-[#facc15] text-black font-pixel text-[10px] py-4 hover:bg-yellow-300 transition-colors uppercase disabled:opacity-50 disabled:cursor-wait shadow-[0_4px_0_#b45309] active:shadow-none active:translate-y-1 ${submitStatus === 'loading' ? 'cursor-wait' : ''}`}
+                  >
+                    {submitStatus === 'loading' ? 'ENVOI EN COURS...' : 'ENVOYER LA PROPOSITION'}
+                  </button>
+                </form>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="scanlines pointer-events-none"></div>
-    </div>
-  );
-}
+        <div className="scanlines pointer-events-none"></div>
+      </div>
+    );
+  }
