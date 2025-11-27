@@ -40,6 +40,8 @@ export default function App() {
   const [selectedShop, setSelectedShop] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  
+  // FIX DU BUG : Rétablissement de la syntaxe correcte
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   const [newShopForm, setNewShopForm] = useState({ 
@@ -134,7 +136,8 @@ export default function App() {
 
       mapInstanceRef.current.flyTo(target.center, target.zoom, {
         animate: true,
-        duration: 6.0,
+        duration: 4.0, 
+        easeLinearity: 0.8
       });
     }
   }, [currentCountry, isLoading]);
@@ -286,10 +289,10 @@ export default function App() {
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .cursor-wait { cursor: wait; }
 
-        /* --- FIX POUR LES CARRÉS BLANCS (Nouvelle couleur) --- */
-        /* Le !important est crucial pour écraser le style par défaut de Leaflet */
+        /* --- STYLES DE LA CARTE MIS À JOUR pour correspondre aux couleurs de prod --- */
         .leaflet-container {
-            background-color: #262626 !important;
+            /* Fix des trous de tuiles sur la couleur de fond de la prod */
+            background-color: #1C1C1C !important; 
         }
       `}</style>
 
@@ -463,7 +466,6 @@ export default function App() {
 
         {/* --- MAP CONTAINER --- */}
         <div className="flex-1 relative bg-[#0f0f15] min-h-0 overflow-hidden">
-          {/* La carte utilise maintenant le fond sombre défini dans le CSS */}
           <div id="map" ref={mapRef} className="w-full h-full z-0" />
           
           {/* --- INFO PANEL (Inchangé) --- */}
