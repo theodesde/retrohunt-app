@@ -124,7 +124,7 @@ export default function App() {
     }
   }, [isSidebarOpen]);
 
-  // --- EFFET DE VOL OPTIMISÉ (Lent + easeLinearity) ---
+  // --- GESTION DU VOL ENTRE PAYS ---
   useEffect(() => {
     if (mapInstanceRef.current && !isLoading) {
       const target = COUNTRIES[currentCountry];
@@ -153,6 +153,15 @@ export default function App() {
       maxZoom: 19,
       updateWhenZooming: false 
     }).addTo(map);
+  };
+
+  // --- GESTION DU CENTRAGE DE LA VUE DE CARTE (NATIONALE) ---
+  const resetMapView = () => {
+    if (mapInstanceRef.current) {
+        const target = COUNTRIES[currentCountry];
+        // Retour à la vue nationale (animation courte et douce)
+        mapInstanceRef.current.flyTo(target.center, target.zoom, { animate: true, duration: 1.0 }); 
+    }
   };
 
   // --- MISES À JOUR DES MARQUEURS ---
@@ -187,8 +196,9 @@ export default function App() {
             </div>
           `);
         
+        // MODIFICATION ICI : Appel de la fonction de zoom unifiée lors du clic marqueur
         marker.on('click', () => {
-          setSelectedShop(shop);
+          flyToShop(shop); 
         });
 
         markersRef.current[shop.id] = marker;
@@ -248,13 +258,24 @@ export default function App() {
       });
   };
 
+  const handleDeselectShop = () => {
+      setSelectedShop(null);
+      resetMapView(); // <-- La croix déclenche le recentrage
+  };
+
   const flyToShop = (shop) => {
-    setSelectedShop(shop);
-    if (mapInstanceRef.current && shop.lat && shop.lng) {
-      // Vol plus rapide pour les déplacements locaux
-      mapInstanceRef.current.flyTo([shop.lat, shop.lng], 13, { duration: 1.5 });
-      const marker = markersRef.current[shop.id];
-      if (marker) marker.openPopup();
+    // MODIFICATION ICI : Si on clique sur le shop déjà sélectionné (désélection), on recentre
+    if (selectedShop && selectedShop.id === shop.id) {
+        setSelectedShop(null);
+        resetMapView(); // <-- On recentre
+    } else {
+        setSelectedShop(shop);
+        if (mapInstanceRef.current && shop.lat && shop.lng) {
+            // Vol plus rapide pour les déplacements locaux
+            mapInstanceRef.current.flyTo([shop.lat, shop.lng], 13, { duration: 1.5 });
+            const marker = markersRef.current[shop.id];
+            if (marker) marker.openPopup();
+        }
     }
   };
 
@@ -283,17 +304,14 @@ export default function App() {
           pointer-events: none; z-index: 50; opacity: 0.3;
         }
         .shop-name-color { color: ${SHOP_NAME_COLOR}; }
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar::-webkit-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .cursor-wait { cursor: wait; }
 
-        /* --- STYLES DE LA CARTE FINALEMENT CORRIGÉS --- */
         .leaflet-container {
-            /* Fix des trous de tuiles sur la couleur de fond de la prod */
             background-color: #1D1D1D !important; 
         }
         #map {
-             /* Filtre pour maintenir l'ambiance dark et la lisibilité */
              filter: grayscale(20%) contrast(1.1); 
         }
       `}</style>
@@ -471,11 +489,13 @@ export default function App() {
         <div className="flex-1 relative bg-[#0f0f15] min-h-0">
           <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1]" />
           
-          {/* --- INFO PANEL (Inchangé) --- */}
+          {/* --- INFO PANEL --- */}
           {selectedShop && (
-            <div className="absolute bottom-2 left-2 right-2 md:left-auto md:right-4 md:bottom-4 md:w-96 bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 border-[#d8b4fe] md:rounded-lg p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300">
+            <div className="absolute 
+                        bottom-1 left-1 right-1 md:left-auto md:right-4 md:bottom-4 md:w-96 
+                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 border-[#d8b4fe] md:rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300">
                <button 
-                onClick={() => setSelectedShop(null)}
+                onClick={handleDeselectShop}
                 className="absolute top-2 right-2 text-gray-500 hover:text-white"
               >
                 <X size={18} />
@@ -606,59 +626,59 @@ export default function App() {
                     placeholder="Ex: 1 Chome-11-2 Sotokanda, Chiyoda City"
                     value={newShopForm.address}
                     onChange={e => setNewShopForm({...newShopForm, address: e.target.value})}
-                    />
-                  </div>
+                  />
+                </div>
 
-                  <div>
-                    <label className="block text-xs uppercase text-gray-500 mb-2 font-bold flex items-center gap-2">
-                      <Tag size={12} /> Catégories (Tags)
-                    </label>
-                    <div className="flex flex-wrap gap-2 p-3 bg-black/40 border border-gray-800 rounded">
-                      {AVAILABLE_TAGS.map(tag => (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => toggleTag(tag)}
-                          className={`
-                            text-[10px] px-2 py-1 rounded border transition-all font-medium
-                            ${newShopForm.tags.includes(tag) 
-                              ? 'bg-[#facc15] text-black border-[#facc15] shadow-[0_0_10px_rgba(250,204,21,0.3)]' 
-                              : 'bg-[#181825] text-gray-400 border-gray-600 hover:border-gray-400'}
-                          `}
-                        >
-                          {tag}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[9px] text-gray-500 mt-1 text-right">
-                      {newShopForm.tags.length} sélectionné(s)
-                    </p>
+                <div>
+                  <label className="block text-xs uppercase text-gray-500 mb-2 font-bold flex items-center gap-2">
+                    <Tag size={12} /> Catégories (Tags)
+                  </label>
+                  <div className="flex flex-wrap gap-2 p-3 bg-black/40 border border-gray-800 rounded">
+                    {AVAILABLE_TAGS.map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => toggleTag(tag)}
+                        className={`
+                          text-[10px] px-2 py-1 rounded border transition-all font-medium
+                          ${newShopForm.tags.includes(tag) 
+                            ? 'bg-[#facc15] text-black border-[#facc15] shadow-[0_0_10px_rgba(250,204,21,0.3)]' 
+                            : 'bg-[#181825] text-gray-400 border-gray-600 hover:border-gray-400'}
+                        `}
+                      >
+                        {tag}
+                      </button>
+                    ))}
                   </div>
+                  <p className="text-[9px] text-gray-500 mt-1 text-right">
+                    {newShopForm.tags.length} sélectionné(s)
+                  </p>
+                </div>
 
-                  <div>
-                    <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
-                    <textarea 
-                      className="w-full bg-black border border-gray-700 text-white p-3 focus:border-[#facc15] outline-none transition-colors h-20 resize-none text-sm"
-                      placeholder="Horaires ? Anecdote ? Précision sur le pays ?"
-                      value={newShopForm.note}
-                      onChange={e => setNewShopForm({...newShopForm, note: e.target.value})}
-                    ></textarea>
-                  </div>
+                <div>
+                  <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
+                  <textarea 
+                    className="w-full bg-black border border-gray-700 text-white p-3 focus:border-[#facc15] outline-none transition-colors h-20 resize-none text-sm"
+                    placeholder="Pourquoi cette boutique est top ? Horaires spécifiques ? Anecdote ?"
+                    value={newShopForm.note}
+                    onChange={e => setNewShopForm({...newShopForm, note: e.target.value})}
+                  ></textarea>
+                </div>
 
-                  <button 
-                    disabled={submitStatus === 'loading'}
-                    type="submit" 
-                    className={`w-full bg-[#facc15] text-black font-pixel text-[10px] py-4 hover:bg-yellow-300 transition-colors uppercase disabled:opacity-50 disabled:cursor-wait shadow-[0_4px_0_#b45309] active:shadow-none active:translate-y-1 ${submitStatus === 'loading' ? 'cursor-wait' : ''}`}
-                  >
-                    {submitStatus === 'loading' ? 'ENVOI EN COURS...' : 'ENVOYER LA PROPOSITION'}
-                  </button>
-                </form>
-              )}
-            </div>
+                <button 
+                  disabled={submitStatus === 'loading'}
+                  type="submit" 
+                  className={`w-full bg-[#facc15] text-black font-pixel text-[10px] py-4 hover:bg-yellow-300 transition-colors uppercase disabled:opacity-50 disabled:cursor-wait shadow-[0_4px_0_#b45309] active:shadow-none active:translate-y-1 ${submitStatus === 'loading' ? 'cursor-wait' : ''}`}
+                >
+                  {submitStatus === 'loading' ? 'ENVOI EN COURS...' : 'ENVOYER LA PROPOSITION'}
+                </button>
+              </form>
+            )}
           </div>
-        )}
+        </div>
+      )}
 
-        <div className="scanlines pointer-events-none"></div>
-      </div>
-    );
-  }
+      <div className="scanlines pointer-events-none"></div>
+    </div>
+  );
+}
