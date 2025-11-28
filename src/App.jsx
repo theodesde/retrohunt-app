@@ -15,7 +15,6 @@ const CONFIG = {
     label: 'France',
     iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.5.0/flags/4x3/fr.svg'
   },
-  // NOTE: Pour la prod, placez ces clés dans un fichier .env (ex: import.meta.env.VITE_EMAILJS_KEY)
   EMAILJS: {
     SERVICE_ID: 'service_arqmija',
     TEMPLATE_ID: 'template_sdd0pom',
@@ -146,7 +145,6 @@ export default function App() {
 
     shops.forEach(shop => {
       if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
-        // Sécurisation XSS ici via escapeHtml
         const safeName = escapeHtml(shop.name);
         const safeCity = escapeHtml(shop.city);
         
@@ -190,7 +188,6 @@ export default function App() {
 
   // Initialisation des scripts Leaflet
   useEffect(() => {
-    // Vérifie si Leaflet est déjà chargé pour éviter les doublons
     if (window.L) {
       initMap();
       return;
@@ -208,7 +205,6 @@ export default function App() {
     document.body.appendChild(script);
 
     return () => {
-        // Cleanup map instance on unmount
         if(mapInstanceRef.current) {
             mapInstanceRef.current.remove();
             mapInstanceRef.current = null;
@@ -216,7 +212,7 @@ export default function App() {
     };
   }, [initMap]);
 
-  // Mise à jour des marqueurs quand les shops changent (et que la map est prête)
+  // Mise à jour des marqueurs
   useEffect(() => {
     if (mapInstanceRef.current && window.L) {
         updateMarkers(mapInstanceRef.current);
@@ -234,7 +230,7 @@ export default function App() {
     return () => clearTimeout(timeoutId);
   }, [isSidebarOpen]);
 
-  // Centrage initial sur les shops
+  // Centrage initial
   useEffect(() => {
     let timeoutId;
     if (!mapInstanceRef.current || isLoading || shops.length === 0 || !window.L) return;
@@ -260,7 +256,6 @@ export default function App() {
 
   // --- 3. LOGIQUE MÉTIER & FILTRES ---
 
-  // Optimisation: useMemo pour éviter le recalcul à chaque render
   const filteredShops = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return shops.filter(shop => 
@@ -316,7 +311,7 @@ export default function App() {
   // --- 4. RENDU ---
 
   return (
-    <div className={`flex flex-col h-screen bg-[${CONFIG.COLORS.BG_DARK}] text-gray-100 font-sans overflow-hidden relative`}>
+    <div className="flex flex-col h-screen text-gray-100 font-sans overflow-hidden relative" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Press+Start+2P&display=swap');
         .font-pixel { font-family: 'Press Start 2P', cursive; }
@@ -344,8 +339,9 @@ export default function App() {
       `}</style>
 
       {/* --- HEADER --- */}
-      <header className={`h-16 bg-[${CONFIG.COLORS.BG_DARK}] flex items-center justify-between px-4 z-20 shrink-0`}
+      <header className="h-16 flex items-center justify-between px-4 z-20 shrink-0"
               style={{ 
+                backgroundColor: CONFIG.COLORS.BG_DARK,
                 borderBottom: `4px solid ${CONFIG.COLORS.PINK}`,
                 boxShadow: `0 0 15px ${CONFIG.COLORS.PINK}`
               }}>
@@ -363,7 +359,7 @@ export default function App() {
                <h1 className="font-pixel text-[10px] md:text-xs text-white tracking-widest text-shadow-sm uppercase">
                  RetroHunt
                </h1>
-               <span className={`inline-block text-[9px] bg-[${CONFIG.COLORS.YELLOW}] text-black px-1 font-bold font-pixel shadow-[2px_2px_0_rgba(0,0,0,0.5)] self-start mt-1`}>BETA</span>
+               <span className="inline-block text-[9px] text-black px-1 font-bold font-pixel shadow-[2px_2px_0_rgba(0,0,0,0.5)] self-start mt-1" style={{ backgroundColor: CONFIG.COLORS.YELLOW }}>BETA</span>
             </div>
 
             <a href="https://www.instagram.com/videogamesplace/" target="_blank" rel="noreferrer" 
@@ -376,7 +372,20 @@ export default function App() {
 
         <button 
           onClick={() => setIsModalOpen(true)}
-          className={`bg-transparent border-2 border-[${CONFIG.COLORS.YELLOW}] text-[${CONFIG.COLORS.YELLOW}] hover:bg-[${CONFIG.COLORS.YELLOW}] hover:text-black hover:shadow-[0_0_15px_${CONFIG.COLORS.YELLOW}] transition-all px-3 py-2 font-pixel text-[8px] md:text-[10px] flex items-center gap-2`}
+          className="bg-transparent border-2 hover:text-black transition-all px-3 py-2 font-pixel text-[8px] md:text-[10px] flex items-center gap-2"
+          style={{ 
+            borderColor: CONFIG.COLORS.YELLOW, 
+            color: CONFIG.COLORS.YELLOW,
+            boxShadow: `0 0 15px ${CONFIG.COLORS.YELLOW}`
+          }}
+          onMouseEnter={(e) => {
+             e.currentTarget.style.backgroundColor = CONFIG.COLORS.YELLOW;
+             e.currentTarget.style.color = 'black';
+          }}
+          onMouseLeave={(e) => {
+             e.currentTarget.style.backgroundColor = 'transparent';
+             e.currentTarget.style.color = CONFIG.COLORS.YELLOW;
+          }}
         >
           <Plus size={14} /> 
           <span className="hidden sm:inline">Ajout shop</span>
@@ -389,17 +398,17 @@ export default function App() {
         
         {/* --- SIDEBAR LIST --- */}
         <div className={`
-          z-10 bg-[#181825]/95 backdrop-blur-md 
+          z-10 backdrop-blur-md 
           border-t md:border-t-0 md:border-r border-gray-800 
           flex flex-col transition-all duration-300 ease-in-out overflow-hidden
           w-full
           ${isSidebarOpen ? 'h-[60%]' : 'h-0'}
           md:h-full
           ${isSidebarOpen ? 'md:w-80' : 'md:w-0'}
-        `}>
+        `} style={{ backgroundColor: 'rgba(24, 24, 37, 0.95)' }}>
           
           {isLoading ? (
-            <div className={`flex-1 flex flex-col items-center justify-center text-[${CONFIG.COLORS.YELLOW}] p-8 text-center gap-4 animate-pulse`}>
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center gap-4 animate-pulse" style={{ color: CONFIG.COLORS.YELLOW }}>
                <Loader2 size={32} className="animate-spin" />
                <p className="font-pixel text-xs leading-relaxed">
                  CONNEXION AU SATELITE GOOGLE...<br/>
@@ -414,7 +423,13 @@ export default function App() {
                   <input 
                     type="text" 
                     placeholder={`Rechercher ici ${CONFIG.DEFAULT_COUNTRY.label}...`} 
-                    className={`w-full bg-[${CONFIG.COLORS.BG_DARK}] border border-gray-600 rounded p-2 pl-10 text-sm text-white focus:outline-none focus:border-[${CONFIG.COLORS.PINK}] focus:ring-1 focus:ring-[${CONFIG.COLORS.PINK}]`}
+                    className="w-full border border-gray-600 rounded p-2 pl-10 text-sm text-white focus:outline-none"
+                    style={{ 
+                        backgroundColor: CONFIG.COLORS.BG_DARK,
+                        borderColor: '#4b5563',
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.PINK}
+                    onBlur={(e) => e.target.style.borderColor = '#4b5563'}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
@@ -429,12 +444,13 @@ export default function App() {
                         <button
                             key={tag}
                             onClick={(e) => searchByTag(e, tag)}
-                            className={`
-                                px-2 py-1 text-[8px] rounded-full border transition-all font-medium font-pixel
-                                ${searchTerm === tag 
-                                    ? `bg-[${CONFIG.COLORS.PINK}] text-white border-[${CONFIG.COLORS.PINK}] shadow-[0_0_8px_${CONFIG.COLORS.PINK}]` 
-                                    : 'bg-[#1e1e2e] text-gray-400 border-gray-600 hover:border-gray-400 hover:text-white'}
-                            `}
+                            className={`px-2 py-1 text-[8px] rounded-full border transition-all font-medium font-pixel`}
+                            style={{
+                                backgroundColor: searchTerm === tag ? CONFIG.COLORS.PINK : '#1e1e2e',
+                                color: searchTerm === tag ? 'white' : '#9ca3af',
+                                borderColor: searchTerm === tag ? CONFIG.COLORS.PINK : '#4b5563',
+                                boxShadow: searchTerm === tag ? `0 0 8px ${CONFIG.COLORS.PINK}` : 'none'
+                            }}
                         >
                             {tag}
                         </button>
@@ -449,15 +465,18 @@ export default function App() {
                     onClick={() => flyToShop(shop)}
                     className={`
                       p-3 rounded border cursor-pointer transition-all hover:translate-x-1
-                      ${selectedShop?.id === shop.id 
-                        ? `bg-[${CONFIG.COLORS.PINK}]/20 border-[${CONFIG.COLORS.PINK}] shadow-[inset_0_0_10px_rgba(255,90,198,0.2)]` 
-                        : 'bg-[#1e1e2e] border-gray-700 hover:border-gray-500'}
+                      ${selectedShop?.id === shop.id ? '' : 'bg-[#1e1e2e] border-gray-700 hover:border-gray-500'}
                     `}
+                    style={selectedShop?.id === shop.id ? {
+                        backgroundColor: `${CONFIG.COLORS.PINK}20`,
+                        borderColor: CONFIG.COLORS.PINK,
+                        boxShadow: `inset 0 0 10px ${CONFIG.COLORS.PINK}33`
+                    } : {}}
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-bold text-sm uppercase tracking-wide shop-name-color">{shop.name}</h3>
                       {shop.hallOfFame && (
-                        <span className={`bg-[${CONFIG.COLORS.YELLOW}] text-black text-[8px] px-1.5 py-0.5 font-pixel flex items-center gap-1 shadow-[1px_1px_0_rgba(0,0,0,0.5)]`}>
+                        <span className="text-black text-[8px] px-1.5 py-0.5 font-pixel flex items-center gap-1 shadow-[1px_1px_0_rgba(0,0,0,0.5)]" style={{ backgroundColor: CONFIG.COLORS.YELLOW }}>
                           <Crown size={8} /> HALL OF FAME
                         </span>
                       )}
@@ -470,7 +489,21 @@ export default function App() {
                         <span 
                           key={idx} 
                           onClick={(e) => searchByTag(e, tag)}
-                          className={`text-[9px] bg-[#111] border border-gray-700 px-1 rounded hover:border-[${CONFIG.COLORS.PINK}] hover:text-[${CONFIG.COLORS.PINK}] transition-colors cursor-pointer ${searchTerm === tag ? `text-[${CONFIG.COLORS.PINK}] border-[${CONFIG.COLORS.PINK}]` : 'text-gray-400'}`}
+                          className="text-[9px] bg-[#111] border border-gray-700 px-1 rounded transition-colors cursor-pointer"
+                          style={{ 
+                              borderColor: searchTerm === tag ? CONFIG.COLORS.PINK : '#374151',
+                              color: searchTerm === tag ? CONFIG.COLORS.PINK : '#9ca3af'
+                          }}
+                          onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = CONFIG.COLORS.PINK;
+                              e.currentTarget.style.color = CONFIG.COLORS.PINK;
+                          }}
+                          onMouseLeave={(e) => {
+                             if (searchTerm !== tag) {
+                                e.currentTarget.style.borderColor = '#374151';
+                                e.currentTarget.style.color = '#9ca3af';
+                             }
+                          }}
                         >
                           {tag}
                         </span>
@@ -503,9 +536,10 @@ export default function App() {
           {selectedShop && (
             <div className="absolute 
                         bottom-1 left-1 right-1 md:left-auto md:right-4 md:bottom-4 md:w-96 
-                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 border-[#d8b4fe] md:rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300">
+                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 md:rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
+                 style={{ borderColor: '#d8b4fe' }}>
                <button 
-                onClick={() => flyToShop(selectedShop)} // Will deselect
+                onClick={() => flyToShop(selectedShop)}
                 className="absolute top-2 right-2 text-gray-500 hover:text-white"
               >
                 <X size={18} />
@@ -517,7 +551,7 @@ export default function App() {
                   <h2 className="font-pixel text-xs uppercase leading-relaxed" style={{ color: CONFIG.COLORS.CYAN }}>{selectedShop.name}</h2>
                 </div>
                 {selectedShop.hallOfFame && (
-                    <span className={`bg-[${CONFIG.COLORS.YELLOW}] text-black text-[9px] px-2 py-1 font-pixel flex items-center gap-1 shadow-[2px_2px_0_rgba(0,0,0,0.5)] animate-pulse`}>
+                    <span className="text-black text-[9px] px-2 py-1 font-pixel flex items-center gap-1 shadow-[2px_2px_0_rgba(0,0,0,0.5)] animate-pulse" style={{ backgroundColor: CONFIG.COLORS.YELLOW }}>
                       <Crown size={10} /> HALL OF FAME
                     </span>
                 )}
@@ -575,15 +609,15 @@ export default function App() {
       {/* --- MODAL DE PROPOSITION --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className={`bg-[#181825] border-2 border-[${CONFIG.COLORS.YELLOW}] w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8`}>
+          <div className="bg-[#181825] border-2 w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8" style={{ borderColor: CONFIG.COLORS.YELLOW }}>
             <button 
               onClick={() => setIsModalOpen(false)}
-              className={`absolute top-3 right-3 text-gray-500 hover:text-[${CONFIG.COLORS.YELLOW}]`}
+              className="absolute top-3 right-3 text-gray-500 hover:text-white"
             >
               <X size={24} />
             </button>
 
-            <h2 className={`font-pixel text-[${CONFIG.COLORS.YELLOW}] text-xs mb-6 text-center border-b border-gray-700 pb-4`}>
+            <h2 className="font-pixel text-xs mb-6 text-center border-b border-gray-700 pb-4" style={{ color: CONFIG.COLORS.YELLOW }}>
               Let's go hunt !
             </h2>
 
@@ -608,7 +642,10 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors text-sm`}
+                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
+                      style={{ borderColor: '#374151' }}
+                      onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
+                      onBlur={(e) => e.target.style.borderColor = '#374151'}
                       placeholder="Ex: Super Potato"
                       value={newShopForm.name}
                       onChange={e => setNewShopForm({...newShopForm, name: e.target.value})}
@@ -619,7 +656,10 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors text-sm`}
+                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
+                      style={{ borderColor: '#374151' }}
+                      onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
+                      onBlur={(e) => e.target.style.borderColor = '#374151'}
                       placeholder="Ex: Tokyo, Japon"
                       value={newShopForm.city}
                       onChange={e => setNewShopForm({...newShopForm, city: e.target.value})}
@@ -632,7 +672,10 @@ export default function App() {
                   <input 
                     required
                     type="text" 
-                    className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors text-sm`}
+                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
+                    style={{ borderColor: '#374151' }}
+                    onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
+                    onBlur={(e) => e.target.style.borderColor = '#374151'}
                     placeholder="Ex: 1 Chome-11-2 Sotokanda, Chiyoda City"
                     value={newShopForm.address}
                     onChange={e => setNewShopForm({...newShopForm, address: e.target.value})}
@@ -649,12 +692,13 @@ export default function App() {
                         key={tag}
                         type="button"
                         onClick={() => toggleTag(tag)}
-                        className={`
-                          text-[10px] px-2 py-1 rounded border transition-all font-medium
-                          ${newShopForm.tags.includes(tag) 
-                            ? `bg-[${CONFIG.COLORS.YELLOW}] text-black border-[${CONFIG.COLORS.YELLOW}] shadow-[0_0_10px_rgba(250,204,21,0.3)]` 
-                            : 'bg-[#181825] text-gray-400 border-gray-600 hover:border-gray-400'}
-                        `}
+                        className="text-[10px] px-2 py-1 rounded border transition-all font-medium"
+                        style={{ 
+                            backgroundColor: newShopForm.tags.includes(tag) ? CONFIG.COLORS.YELLOW : '#181825',
+                            color: newShopForm.tags.includes(tag) ? 'black' : '#9ca3af',
+                            borderColor: newShopForm.tags.includes(tag) ? CONFIG.COLORS.YELLOW : '#4b5563',
+                            boxShadow: newShopForm.tags.includes(tag) ? `0 0 10px ${CONFIG.COLORS.YELLOW}4D` : 'none'
+                        }}
                       >
                         {tag}
                       </button>
@@ -668,7 +712,10 @@ export default function App() {
                 <div>
                   <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
                   <textarea 
-                    className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors h-20 resize-none text-sm`}
+                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm"
+                    style={{ borderColor: '#374151' }}
+                    onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
+                    onBlur={(e) => e.target.style.borderColor = '#374151'}
                     placeholder="Pourquoi cette boutique est top ? Horaires spécifiques ? Anecdote ?"
                     value={newShopForm.note}
                     onChange={e => setNewShopForm({...newShopForm, note: e.target.value})}
@@ -678,7 +725,8 @@ export default function App() {
                 <button 
                   disabled={submitStatus === 'loading'}
                   type="submit" 
-                  className={`w-full bg-[${CONFIG.COLORS.YELLOW}] text-black font-pixel text-[10px] py-4 hover:bg-yellow-300 transition-colors uppercase disabled:opacity-50 disabled:cursor-wait shadow-[0_4px_0_#b45309] active:shadow-none active:translate-y-1 ${submitStatus === 'loading' ? 'cursor-wait' : ''}`}
+                  className={`w-full text-black font-pixel text-[10px] py-4 transition-colors uppercase disabled:opacity-50 disabled:cursor-wait shadow-[0_4px_0_#b45309] active:shadow-none active:translate-y-1 ${submitStatus === 'loading' ? 'cursor-wait' : ''}`}
+                  style={{ backgroundColor: CONFIG.COLORS.YELLOW }}
                 >
                   {submitStatus === 'loading' ? 'ENVOI EN COURS...' : 'ENVOYER LA PROPOSITION'}
                 </button>
