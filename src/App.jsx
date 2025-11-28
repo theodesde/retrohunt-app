@@ -1,33 +1,55 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Gamepad2, Search, Plus, X, ExternalLink, Menu, Tag, Instagram, Mail, Loader2, Crown } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { MapPin, Gamepad2, Search, Plus, X, ExternalLink, Menu, Tag, Instagram, Loader2, Crown } from 'lucide-react';
 import emailjs from '@emailjs/browser';
 import Papa from 'papaparse';
 
 // ==================================================================================
-// ⚙️ CONFIGURATION - FRANCE UNIQUEMENT (PROD)
+// ⚙️ CONFIGURATION & CONSTANTES
 // ==================================================================================
-const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS79h5TvhI7uVi0bKlipooX7h3AH4K5UwORpz6uyHZ8EW298KnZtpuQMNcHITUHm5zKs1X0JRXkCLSb/pub?gid=1712668653&single=true&output=csv";
-
-// Configuration du pays PAR DÉFAUT (Fixée sur la France)
-const DEFAULT_COUNTRY = { 
-  code: 'FR',
-  center: [46.603354, 1.888334], 
-  zoom: 6, 
-  label: 'France',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.5.0/flags/4x3/fr.svg'
+const CONFIG = {
+  SHEET_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vS79h5TvhI7uVi0bKlipooX7h3AH4K5UwORpz6uyHZ8EW298KnZtpuQMNcHITUHm5zKs1X0JRXkCLSb/pub?gid=1712668653&single=true&output=csv",
+  DEFAULT_COUNTRY: { 
+    code: 'FR',
+    center: [46.603354, 1.888334], 
+    zoom: 6, 
+    label: 'France',
+    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.5.0/flags/4x3/fr.svg'
+  },
+  // NOTE: Pour la prod, placez ces clés dans un fichier .env (ex: import.meta.env.VITE_EMAILJS_KEY)
+  EMAILJS: {
+    SERVICE_ID: 'service_arqmija',
+    TEMPLATE_ID: 'template_sdd0pom',
+    PUBLIC_KEY: 'XeofrijQDBJpyYeWi'
+  },
+  COLORS: {
+    PINK: '#ff5ac6',
+    YELLOW: '#facc15',
+    CYAN: '#72fffb',
+    BG_DARK: '#11111b',
+    BG_PANEL: '#1e1e2e'
+  }
 };
 
 const AVAILABLE_TAGS = [
   "Rétrogaming", "Next Gen", "Import Japon", "Arcade", "Figurines", "Réparations", "Goodies"
 ];
 
+// Sécurisation basique contre XSS pour les popups Leaflet
+const escapeHtml = (unsafe) => {
+  if (!unsafe) return "";
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
 // ==================================================================================
 
 export default function App() {
+  // États
   const [shops, setShops] = useState([]);
-  // On fixe le pays sur la France
-  const currentCountry = 'FR'; 
-  
   const [isLoading, setIsLoading] = useState(true);
   const [selectedShop, setSelectedShop] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -39,26 +61,25 @@ export default function App() {
   });
   const [submitStatus, setSubmitStatus] = useState(null);
 
+  // Refs
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef({});
 
-  // COULEURS
-  const BRAND_PINK = '#ff5ac6';   
-  const BRAND_YELLOW = '#facc15'; 
-  const SHOP_NAME_COLOR = '#72fffb'; 
-
-  // --- CHARGEMENT DES DONNÉES ---
+  // --- 1. CHARGEMENT DES DONNÉES ---
   useEffect(() => {
+    let isMounted = true;
     setIsLoading(true);
     
-    Papa.parse(GOOGLE_SHEET_CSV_URL, {
+    Papa.parse(CONFIG.SHEET_CSV_URL, {
       download: true,
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
+        if (!isMounted) return;
+
         const cleanedShops = results.data
-          .filter(row => row.name && row.Latitude && row.Longitude && row.isPublished && row.isPublished.toLowerCase() === 'true') 
+          .filter(row => row.name && row.Latitude && row.Longitude && row.isPublished?.toLowerCase() === 'true') 
           .map((row, index) => ({
             id: index + 1,
             name: row.name,
@@ -68,10 +89,10 @@ export default function App() {
             lat: parseFloat(row.Latitude.toString().replace(',', '.')), 
             lng: parseFloat(row.Longitude.toString().replace(',', '.')),
             specialty: row.specialty,
-            tags: row.tags ? row.tags.split(',').map(tag => tag.trim()).filter(tag => tag !== "") : [],
+            tags: row.tags ? row.tags.split(',').map(tag => tag.trim()).filter(t => t !== "") : [],
             description: row.description,
-            verified: row.verified && row.verified.toLowerCase() === 'true',
-            hallOfFame: row.hallOfFame && row.hallOfFame.toLowerCase() === 'true'
+            verified: row.verified?.toLowerCase() === 'true',
+            hallOfFame: row.hallOfFame?.toLowerCase() === 'true'
           }));
 
         setShops(cleanedShops);
@@ -79,110 +100,68 @@ export default function App() {
       },
       error: (error) => {
         console.error("Erreur loading Sheet:", error);
-        setIsLoading(false);
-        alert("Erreur de connexion à la base de données.");
+        if (isMounted) {
+          setIsLoading(false);
+          alert("Erreur de connexion à la base de données.");
+        }
       }
     });
+
+    return () => { isMounted = false; };
   }, []);
 
-
-  // --- INITIALISATION CARTE ---
-  useEffect(() => {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    document.head.appendChild(link);
-
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.async = true;
-    script.onload = () => initMap();
-    document.body.appendChild(script);
-
-    return () => {
-      if(mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-    };
-  }, []);
-
-  // --- FIX REDIMENSIONNEMENT CARTE ---
-  useEffect(() => {
-    if (mapInstanceRef.current) {
-      setTimeout(() => {
-        mapInstanceRef.current.invalidateSize();
-      }, 350);
+  // --- 2. GESTION DE LA CARTE (Leaflet) ---
+  
+  const flyToShop = useCallback((shop) => {
+    if (selectedShop && selectedShop.id === shop.id) {
+        // Deselect
+        setSelectedShop(null);
+        if (mapInstanceRef.current) {
+            mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });
+        }
+    } else {
+        // Select
+        setSelectedShop(shop);
+        if (mapInstanceRef.current && shop.lat && shop.lng) {
+            mapInstanceRef.current.flyTo([shop.lat, shop.lng], 13, { duration: 1.5 });
+            const marker = markersRef.current[shop.id];
+            if (marker) marker.openPopup();
+        }
     }
-  }, [isSidebarOpen]);
+  }, [selectedShop]);
 
-  // --- CENTRAGE INITIAL ---
-  useEffect(() => {
-    if (!mapInstanceRef.current || isLoading) return;
-    
-    if (shops.length > 0) {
-      const allMarkers = shops
-        .filter(shop => shop.lat && shop.lng)
-        .map(shop => window.L.marker([shop.lat, shop.lng]));
+  const updateMarkers = useCallback((map) => {
+    if (!window.L) return;
 
-      if (allMarkers.length > 0) {
-        const group = new window.L.featureGroup(allMarkers);
-        setTimeout(() => {
-             try {
-                mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [50, 50], maxZoom: 13 });
-             } catch (e) { console.log('Fitbounds error', e); }
-        }, 100);
-        return;
-      }
-    }
-    
-    mapInstanceRef.current.setView(DEFAULT_COUNTRY.center, DEFAULT_COUNTRY.zoom);
-  }, [shops, isLoading]); 
-
-
-  const initMap = () => {
-    if (!window.L || mapInstanceRef.current) return;
-    const initialTarget = DEFAULT_COUNTRY;
-    const map = window.L.map(mapRef.current).setView(initialTarget.center, initialTarget.zoom);
-    mapInstanceRef.current = map;
-
-    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap © CARTO',
-      subdomains: 'abcd',
-      maxZoom: 19,
-      updateWhenZooming: false 
-    }).addTo(map);
-  };
-
-  // --- MARQUEURS ---
-  useEffect(() => {
-    if (!window.L || !mapInstanceRef.current || shops.length === 0) return;
-    updateMarkers(mapInstanceRef.current);
-  }, [shops, isLoading]);
-
-  const updateMarkers = (map) => {
     const retroIcon = window.L.divIcon({
       className: 'custom-div-icon',
-      html: `<div style="background-color: ${BRAND_PINK}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 8px ${BRAND_PINK}, 0 0 20px ${BRAND_PINK};"></div>`,
+      html: `<div style="background-color: ${CONFIG.COLORS.PINK}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 8px ${CONFIG.COLORS.PINK}, 0 0 20px ${CONFIG.COLORS.PINK};"></div>`,
       iconSize: [14, 14],
       iconAnchor: [7, 7]
     });
 
+    // Nettoyage des anciens marqueurs
     Object.values(markersRef.current).forEach(marker => map.removeLayer(marker));
     markersRef.current = {};
 
     shops.forEach(shop => {
       if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
+        // Sécurisation XSS ici via escapeHtml
+        const safeName = escapeHtml(shop.name);
+        const safeCity = escapeHtml(shop.city);
+        
+        const popupContent = `
+            <div style="font-family: 'Inter', sans-serif; color: #111;">
+              <strong style="font-family: 'Courier New', monospace; text-transform: uppercase;">${safeName}</strong>
+              ${shop.hallOfFame ? `<span style="background-color: ${CONFIG.COLORS.YELLOW}; color: black; font-size: 9px; padding: 1px 4px; margin-left: 6px; border-radius: 2px; font-weight: bold;">👑 HALL OF FAME</span>` : ''}
+              <br/>
+              ${safeCity}
+            </div>
+          `;
+
         const marker = window.L.marker([shop.lat, shop.lng], { icon: retroIcon })
           .addTo(map)
-          .bindPopup(`
-            <div style="font-family: 'Inter', sans-serif; color: #111;">
-              <strong style="font-family: 'Courier New', monospace; text-transform: uppercase;">${shop.name}</strong>
-              ${shop.hallOfFame ? `<span style="background-color: ${BRAND_YELLOW}; color: black; font-size: 9px; padding: 1px 4px; margin-left: 6px; border-radius: 2px; font-weight: bold;">👑 HALL OF FAME</span>` : ''}
-              <br/>
-              ${shop.city}
-            </div>
-          `);
+          .bindPopup(popupContent);
         
         marker.on('click', () => {
           flyToShop(shop); 
@@ -191,26 +170,115 @@ export default function App() {
         markersRef.current[shop.id] = marker;
       }
     });
-  };
+  }, [shops, flyToShop]);
 
-  // --- FILTRAGE ---
-  const filteredShops = shops.filter(shop => 
-    shop.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    shop.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())))
-  );
+  const initMap = useCallback(() => {
+    if (!window.L || mapInstanceRef.current) return;
+    
+    const map = window.L.map(mapRef.current).setView(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom);
+    mapInstanceRef.current = map;
+
+    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap © CARTO',
+      subdomains: 'abcd',
+      maxZoom: 19,
+      updateWhenZooming: false 
+    }).addTo(map);
+
+    updateMarkers(map);
+  }, [updateMarkers]);
+
+  // Initialisation des scripts Leaflet
+  useEffect(() => {
+    // Vérifie si Leaflet est déjà chargé pour éviter les doublons
+    if (window.L) {
+      initMap();
+      return;
+    }
+
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.async = true;
+    script.onload = initMap;
+    document.body.appendChild(script);
+
+    return () => {
+        // Cleanup map instance on unmount
+        if(mapInstanceRef.current) {
+            mapInstanceRef.current.remove();
+            mapInstanceRef.current = null;
+        }
+    };
+  }, [initMap]);
+
+  // Mise à jour des marqueurs quand les shops changent (et que la map est prête)
+  useEffect(() => {
+    if (mapInstanceRef.current && window.L) {
+        updateMarkers(mapInstanceRef.current);
+    }
+  }, [shops, updateMarkers]);
+
+  // Fix redimensionnement
+  useEffect(() => {
+    let timeoutId;
+    if (mapInstanceRef.current) {
+      timeoutId = setTimeout(() => {
+        mapInstanceRef.current.invalidateSize();
+      }, 350);
+    }
+    return () => clearTimeout(timeoutId);
+  }, [isSidebarOpen]);
+
+  // Centrage initial sur les shops
+  useEffect(() => {
+    let timeoutId;
+    if (!mapInstanceRef.current || isLoading || shops.length === 0 || !window.L) return;
+    
+    const allMarkers = shops
+        .filter(shop => shop.lat && shop.lng)
+        .map(shop => window.L.marker([shop.lat, shop.lng]));
+
+    if (allMarkers.length > 0) {
+        const group = new window.L.featureGroup(allMarkers);
+        timeoutId = setTimeout(() => {
+             try {
+                mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [50, 50], maxZoom: 13 });
+             } catch (e) { console.log('Fitbounds error', e); }
+        }, 100);
+    } else {
+        mapInstanceRef.current.setView(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom);
+    }
+
+    return () => clearTimeout(timeoutId);
+  }, [shops, isLoading]); 
+
+
+  // --- 3. LOGIQUE MÉTIER & FILTRES ---
+
+  // Optimisation: useMemo pour éviter le recalcul à chaque render
+  const filteredShops = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return shops.filter(shop => 
+      shop.name.toLowerCase().includes(term) ||
+      shop.city.toLowerCase().includes(term) ||
+      (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
+    );
+  }, [shops, searchTerm]);
 
   const toggleTag = (tag) => {
     setNewShopForm(prev => {
       if (prev.tags.includes(tag)) {
         return { ...prev, tags: prev.tags.filter(t => t !== tag) };
-      } else {
-        return { ...prev, tags: [...prev.tags, tag] };
       }
+      return { ...prev, tags: [...prev.tags, tag] };
     });
   };
 
-  // --- EMAIL ---
   const handleSuggestSubmit = (e) => {
     e.preventDefault();
     setSubmitStatus('loading');
@@ -221,14 +289,10 @@ export default function App() {
       address: newShopForm.address,
       tags: newShopForm.tags.join(', '),
       note: newShopForm.note,
-      country: DEFAULT_COUNTRY.code 
+      country: CONFIG.DEFAULT_COUNTRY.code 
     };
 
-    const serviceID = 'service_arqmija';
-    const templateID = 'template_sdd0pom';
-    const publicKey = 'XeofrijQDBJpyYeWi';
-
-    emailjs.send(serviceID, templateID, templateParams, publicKey)
+    emailjs.send(CONFIG.EMAILJS.SERVICE_ID, CONFIG.EMAILJS.TEMPLATE_ID, templateParams, CONFIG.EMAILJS.PUBLIC_KEY)
       .then(() => {
          setSubmitStatus('success');
          setTimeout(() => {
@@ -244,51 +308,29 @@ export default function App() {
       });
   };
 
-  const handleDeselectShop = () => {
-      setSelectedShop(null);
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.flyTo(DEFAULT_COUNTRY.center, DEFAULT_COUNTRY.zoom, { duration: 1.5 });
-      }
-  };
-
-  const flyToShop = (shop) => {
-    if (selectedShop && selectedShop.id === shop.id) {
-        handleDeselectShop();
-    } else {
-        setSelectedShop(shop);
-        if (mapInstanceRef.current && shop.lat && shop.lng) {
-            mapInstanceRef.current.flyTo([shop.lat, shop.lng], 13, { duration: 1.5 });
-            const marker = markersRef.current[shop.id];
-            if (marker) marker.openPopup();
-        }
-    }
-  };
-
   const searchByTag = (e, tag) => {
     e?.stopPropagation();
-    if (searchTerm === tag) {
-        setSearchTerm("");
-    } else {
-        setSearchTerm(tag);
-    }
+    setSearchTerm(prev => prev === tag ? "" : tag);
   };
 
+  // --- 4. RENDU ---
+
   return (
-    <div className="flex flex-col h-screen bg-[#11111b] text-gray-100 font-sans overflow-hidden relative">
+    <div className={`flex flex-col h-screen bg-[${CONFIG.COLORS.BG_DARK}] text-gray-100 font-sans overflow-hidden relative`}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Press+Start+2P&display=swap');
         .font-pixel { font-family: 'Press Start 2P', cursive; }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #111; }
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: ${BRAND_PINK}; }
+        ::-webkit-scrollbar-thumb:hover { background: ${CONFIG.COLORS.PINK}; }
         .scanlines {
           background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1));
           background-size: 100% 4px;
           position: absolute; top: 0; left: 0; right: 0; bottom: 0;
           pointer-events: none; z-index: 50; opacity: 0.3;
         }
-        .shop-name-color { color: ${SHOP_NAME_COLOR}; }
+        .shop-name-color { color: ${CONFIG.COLORS.CYAN}; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .cursor-wait { cursor: wait; }
@@ -302,16 +344,16 @@ export default function App() {
       `}</style>
 
       {/* --- HEADER --- */}
-      <header className="h-16 bg-[#11111b] flex items-center justify-between px-4 z-20 shrink-0"
+      <header className={`h-16 bg-[${CONFIG.COLORS.BG_DARK}] flex items-center justify-between px-4 z-20 shrink-0`}
               style={{ 
-                borderBottom: `4px solid ${BRAND_PINK}`,
-                boxShadow: `0 0 15px ${BRAND_PINK}`
+                borderBottom: `4px solid ${CONFIG.COLORS.PINK}`,
+                boxShadow: `0 0 15px ${CONFIG.COLORS.PINK}`
               }}>
         <div className="flex items-center gap-3">
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="transition-colors hover:text-white"
-            style={{ color: BRAND_PINK }}
+            style={{ color: CONFIG.COLORS.PINK }}
           >
             {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -321,14 +363,12 @@ export default function App() {
                <h1 className="font-pixel text-[10px] md:text-xs text-white tracking-widest text-shadow-sm uppercase">
                  RetroHunt
                </h1>
-               {/* AJOUT DU TEXTE FR + BADGE BETA VISIBLE PARTOUT */}
-               <span className="font-pixel text-[10px] md:text-xs tracking-widest text-shadow-sm uppercase" style={{ color: BRAND_PINK }}>FR</span>
-               <span className="inline-block text-[9px] bg-[#facc15] text-black px-1 font-bold font-pixel shadow-[2px_2px_0_rgba(0,0,0,0.5)] self-start">BETA</span>
+               <span className={`inline-block text-[9px] bg-[${CONFIG.COLORS.YELLOW}] text-black px-1 font-bold font-pixel shadow-[2px_2px_0_rgba(0,0,0,0.5)] self-start mt-1`}>BETA</span>
             </div>
 
             <a href="https://www.instagram.com/videogamesplace/" target="_blank" rel="noreferrer" 
                className="flex items-center gap-1 text-[8px] font-sans font-bold mt-1 hover:text-white transition-colors"
-               style={{ color: BRAND_PINK }}>
+               style={{ color: CONFIG.COLORS.PINK }}>
               <Instagram size={10} /> by Videogamesplace
             </a>
           </div>
@@ -336,7 +376,7 @@ export default function App() {
 
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="bg-transparent border-2 border-[#facc15] text-[#facc15] hover:bg-[#facc15] hover:text-black hover:shadow-[0_0_15px_#facc15] transition-all px-3 py-2 font-pixel text-[8px] md:text-[10px] flex items-center gap-2"
+          className={`bg-transparent border-2 border-[${CONFIG.COLORS.YELLOW}] text-[${CONFIG.COLORS.YELLOW}] hover:bg-[${CONFIG.COLORS.YELLOW}] hover:text-black hover:shadow-[0_0_15px_${CONFIG.COLORS.YELLOW}] transition-all px-3 py-2 font-pixel text-[8px] md:text-[10px] flex items-center gap-2`}
         >
           <Plus size={14} /> 
           <span className="hidden sm:inline">Ajout shop</span>
@@ -358,9 +398,8 @@ export default function App() {
           ${isSidebarOpen ? 'md:w-80' : 'md:w-0'}
         `}>
           
-          {/* --- ÉTAT DE CHARGEMENT --- */}
           {isLoading ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-[#facc15] p-8 text-center gap-4 animate-pulse">
+            <div className={`flex-1 flex flex-col items-center justify-center text-[${CONFIG.COLORS.YELLOW}] p-8 text-center gap-4 animate-pulse`}>
                <Loader2 size={32} className="animate-spin" />
                <p className="font-pixel text-xs leading-relaxed">
                  CONNEXION AU SATELITE GOOGLE...<br/>
@@ -368,15 +407,14 @@ export default function App() {
                </p>
             </div>
           ) : (
-            /* --- CONTENU NORMAL --- */
             <>
               <div className="p-4 border-b border-gray-700 flex flex-col gap-3 shrink-0">
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
                   <input 
                     type="text" 
-                    placeholder={`Rechercher ici ${DEFAULT_COUNTRY.label}...`} 
-                    className="w-full bg-[#11111b] border border-gray-600 rounded p-2 pl-10 text-sm text-white focus:outline-none focus:border-[#ff5ac6] focus:ring-1 focus:ring-[#ff5ac6]"
+                    placeholder={`Rechercher ici ${CONFIG.DEFAULT_COUNTRY.label}...`} 
+                    className={`w-full bg-[${CONFIG.COLORS.BG_DARK}] border border-gray-600 rounded p-2 pl-10 text-sm text-white focus:outline-none focus:border-[${CONFIG.COLORS.PINK}] focus:ring-1 focus:ring-[${CONFIG.COLORS.PINK}]`}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
@@ -394,7 +432,7 @@ export default function App() {
                             className={`
                                 px-2 py-1 text-[8px] rounded-full border transition-all font-medium font-pixel
                                 ${searchTerm === tag 
-                                    ? `bg-[${BRAND_PINK}] text-white border-[${BRAND_PINK}] shadow-[0_0_8px_${BRAND_PINK}]` 
+                                    ? `bg-[${CONFIG.COLORS.PINK}] text-white border-[${CONFIG.COLORS.PINK}] shadow-[0_0_8px_${CONFIG.COLORS.PINK}]` 
                                     : 'bg-[#1e1e2e] text-gray-400 border-gray-600 hover:border-gray-400 hover:text-white'}
                             `}
                         >
@@ -412,14 +450,14 @@ export default function App() {
                     className={`
                       p-3 rounded border cursor-pointer transition-all hover:translate-x-1
                       ${selectedShop?.id === shop.id 
-                        ? `bg-[${BRAND_PINK}]/20 border-[${BRAND_PINK}] shadow-[inset_0_0_10px_rgba(255,90,198,0.2)]` 
+                        ? `bg-[${CONFIG.COLORS.PINK}]/20 border-[${CONFIG.COLORS.PINK}] shadow-[inset_0_0_10px_rgba(255,90,198,0.2)]` 
                         : 'bg-[#1e1e2e] border-gray-700 hover:border-gray-500'}
                     `}
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-bold text-sm uppercase tracking-wide shop-name-color">{shop.name}</h3>
                       {shop.hallOfFame && (
-                        <span className="bg-[#facc15] text-black text-[8px] px-1.5 py-0.5 font-pixel flex items-center gap-1 shadow-[1px_1px_0_rgba(0,0,0,0.5)]">
+                        <span className={`bg-[${CONFIG.COLORS.YELLOW}] text-black text-[8px] px-1.5 py-0.5 font-pixel flex items-center gap-1 shadow-[1px_1px_0_rgba(0,0,0,0.5)]`}>
                           <Crown size={8} /> HALL OF FAME
                         </span>
                       )}
@@ -432,7 +470,7 @@ export default function App() {
                         <span 
                           key={idx} 
                           onClick={(e) => searchByTag(e, tag)}
-                          className={`text-[9px] bg-[#111] border border-gray-700 px-1 rounded hover:border-[${BRAND_PINK}] hover:text-[${BRAND_PINK}] transition-colors cursor-pointer ${searchTerm === tag ? 'text-[#ff5ac6] border-[#ff5ac6]' : 'text-gray-400'}`}
+                          className={`text-[9px] bg-[#111] border border-gray-700 px-1 rounded hover:border-[${CONFIG.COLORS.PINK}] hover:text-[${CONFIG.COLORS.PINK}] transition-colors cursor-pointer ${searchTerm === tag ? `text-[${CONFIG.COLORS.PINK}] border-[${CONFIG.COLORS.PINK}]` : 'text-gray-400'}`}
                         >
                           {tag}
                         </span>
@@ -444,14 +482,14 @@ export default function App() {
                 
                 {filteredShops.length === 0 && (
                   <div className="text-center p-8 text-gray-500 text-sm">
-                    Aucune boutique trouvée pour "{searchTerm}" ici {DEFAULT_COUNTRY.label}.<br/>
-                    <button onClick={() => setSearchTerm('')} style={{ color: BRAND_PINK }} className="underline mt-2">Effacer le filtre</button>
+                    Aucune boutique trouvée pour "{searchTerm}" ici {CONFIG.DEFAULT_COUNTRY.label}.<br/>
+                    <button onClick={() => setSearchTerm('')} style={{ color: CONFIG.COLORS.PINK }} className="underline mt-2">Effacer le filtre</button>
                   </div>
                 )}
               </div>
 
               <div className="p-3 text-[10px] text-gray-500 text-center border-t border-gray-800 font-pixel shrink-0">
-                {filteredShops.length} BOUTIQUES {DEFAULT_COUNTRY.label}
+                {filteredShops.length} BOUTIQUES {CONFIG.DEFAULT_COUNTRY.label}
               </div>
             </>
           )}
@@ -467,7 +505,7 @@ export default function App() {
                         bottom-1 left-1 right-1 md:left-auto md:right-4 md:bottom-4 md:w-96 
                         bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 border-[#d8b4fe] md:rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300">
                <button 
-                onClick={handleDeselectShop}
+                onClick={() => flyToShop(selectedShop)} // Will deselect
                 className="absolute top-2 right-2 text-gray-500 hover:text-white"
               >
                 <X size={18} />
@@ -475,11 +513,11 @@ export default function App() {
               
               <div className="flex flex-wrap items-center gap-3 mb-3">
                 <div className="flex items-center gap-2">
-                  <Gamepad2 style={{ color: SHOP_NAME_COLOR }} size={20} />
-                  <h2 className="font-pixel text-xs uppercase leading-relaxed" style={{ color: SHOP_NAME_COLOR }}>{selectedShop.name}</h2>
+                  <Gamepad2 style={{ color: CONFIG.COLORS.CYAN }} size={20} />
+                  <h2 className="font-pixel text-xs uppercase leading-relaxed" style={{ color: CONFIG.COLORS.CYAN }}>{selectedShop.name}</h2>
                 </div>
                 {selectedShop.hallOfFame && (
-                    <span className="bg-[#facc15] text-black text-[9px] px-2 py-1 font-pixel flex items-center gap-1 shadow-[2px_2px_0_rgba(0,0,0,0.5)] animate-pulse">
+                    <span className={`bg-[${CONFIG.COLORS.YELLOW}] text-black text-[9px] px-2 py-1 font-pixel flex items-center gap-1 shadow-[2px_2px_0_rgba(0,0,0,0.5)] animate-pulse`}>
                       <Crown size={10} /> HALL OF FAME
                     </span>
                 )}
@@ -497,9 +535,9 @@ export default function App() {
                       onClick={(e) => searchByTag(e, tag)}
                       className="text-[10px] font-pixel border px-2 py-1 bg-opacity-10 hover:bg-opacity-30 transition-all cursor-pointer"
                       style={{ 
-                        color: searchTerm === tag ? BRAND_PINK : SHOP_NAME_COLOR, 
-                        borderColor: searchTerm === tag ? BRAND_PINK : SHOP_NAME_COLOR, 
-                        backgroundColor: searchTerm === tag ? `${BRAND_PINK}20` : `${SHOP_NAME_COLOR}20` 
+                        color: searchTerm === tag ? CONFIG.COLORS.PINK : CONFIG.COLORS.CYAN, 
+                        borderColor: searchTerm === tag ? CONFIG.COLORS.PINK : CONFIG.COLORS.CYAN, 
+                        backgroundColor: searchTerm === tag ? `${CONFIG.COLORS.PINK}20` : `${CONFIG.COLORS.CYAN}20` 
                       }}
                     >
                       {tag}
@@ -516,15 +554,15 @@ export default function App() {
               </div>
 
               <a 
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
+                href={`http://maps.google.com/?q=${encodeURIComponent(selectedShop.name + ' ' + selectedShop.address)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-4 block w-full text-center py-3 border font-pixel text-[10px] hover:text-black transition-all uppercase"
                 style={{ 
-                  color: SHOP_NAME_COLOR, 
-                  borderColor: SHOP_NAME_COLOR,
+                  color: CONFIG.COLORS.CYAN, 
+                  borderColor: CONFIG.COLORS.CYAN,
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = SHOP_NAME_COLOR; }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = CONFIG.COLORS.CYAN; }}
                 onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
               >
                 Y aller (GPS) <ExternalLink size={10} className="inline ml-1 mb-0.5"/>
@@ -534,18 +572,18 @@ export default function App() {
         </div>
       </div>
 
-      {/* --- MODAL DE PROPOSITION (Inchangée) --- */}
+      {/* --- MODAL DE PROPOSITION --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#181825] border-2 border-[#facc15] w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8">
+          <div className={`bg-[#181825] border-2 border-[${CONFIG.COLORS.YELLOW}] w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8`}>
             <button 
               onClick={() => setIsModalOpen(false)}
-              className="absolute top-3 right-3 text-gray-500 hover:text-[#facc15]"
+              className={`absolute top-3 right-3 text-gray-500 hover:text-[${CONFIG.COLORS.YELLOW}]`}
             >
               <X size={24} />
             </button>
 
-            <h2 className="font-pixel text-[#facc15] text-xs mb-6 text-center border-b border-gray-700 pb-4">
+            <h2 className={`font-pixel text-[${CONFIG.COLORS.YELLOW}] text-xs mb-6 text-center border-b border-gray-700 pb-4`}>
               Let's go hunt !
             </h2>
 
@@ -570,7 +608,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className="w-full bg-black border border-gray-700 text-white p-3 focus:border-[#facc15] outline-none transition-colors text-sm"
+                      className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors text-sm`}
                       placeholder="Ex: Super Potato"
                       value={newShopForm.name}
                       onChange={e => setNewShopForm({...newShopForm, name: e.target.value})}
@@ -581,7 +619,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className="w-full bg-black border border-gray-700 text-white p-3 focus:border-[#facc15] outline-none transition-colors text-sm"
+                      className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors text-sm`}
                       placeholder="Ex: Tokyo, Japon"
                       value={newShopForm.city}
                       onChange={e => setNewShopForm({...newShopForm, city: e.target.value})}
@@ -594,7 +632,7 @@ export default function App() {
                   <input 
                     required
                     type="text" 
-                    className="w-full bg-black border border-gray-700 text-white p-3 focus:border-[#facc15] outline-none transition-colors text-sm"
+                    className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors text-sm`}
                     placeholder="Ex: 1 Chome-11-2 Sotokanda, Chiyoda City"
                     value={newShopForm.address}
                     onChange={e => setNewShopForm({...newShopForm, address: e.target.value})}
@@ -614,7 +652,7 @@ export default function App() {
                         className={`
                           text-[10px] px-2 py-1 rounded border transition-all font-medium
                           ${newShopForm.tags.includes(tag) 
-                            ? 'bg-[#facc15] text-black border-[#facc15] shadow-[0_0_10px_rgba(250,204,21,0.3)]' 
+                            ? `bg-[${CONFIG.COLORS.YELLOW}] text-black border-[${CONFIG.COLORS.YELLOW}] shadow-[0_0_10px_rgba(250,204,21,0.3)]` 
                             : 'bg-[#181825] text-gray-400 border-gray-600 hover:border-gray-400'}
                         `}
                       >
@@ -630,7 +668,7 @@ export default function App() {
                 <div>
                   <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
                   <textarea 
-                    className="w-full bg-black border border-gray-700 text-white p-3 focus:border-[#facc15] outline-none transition-colors h-20 resize-none text-sm"
+                    className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors h-20 resize-none text-sm`}
                     placeholder="Pourquoi cette boutique est top ? Horaires spécifiques ? Anecdote ?"
                     value={newShopForm.note}
                     onChange={e => setNewShopForm({...newShopForm, note: e.target.value})}
@@ -640,7 +678,7 @@ export default function App() {
                 <button 
                   disabled={submitStatus === 'loading'}
                   type="submit" 
-                  className={`w-full bg-[#facc15] text-black font-pixel text-[10px] py-4 hover:bg-yellow-300 transition-colors uppercase disabled:opacity-50 disabled:cursor-wait shadow-[0_4px_0_#b45309] active:shadow-none active:translate-y-1 ${submitStatus === 'loading' ? 'cursor-wait' : ''}`}
+                  className={`w-full bg-[${CONFIG.COLORS.YELLOW}] text-black font-pixel text-[10px] py-4 hover:bg-yellow-300 transition-colors uppercase disabled:opacity-50 disabled:cursor-wait shadow-[0_4px_0_#b45309] active:shadow-none active:translate-y-1 ${submitStatus === 'loading' ? 'cursor-wait' : ''}`}
                 >
                   {submitStatus === 'loading' ? 'ENVOI EN COURS...' : 'ENVOYER LA PROPOSITION'}
                 </button>
