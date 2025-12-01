@@ -120,6 +120,18 @@ export default function App() {
     return () => { isMounted = false; };
   }, []);
 
+
+  // --- LOGIQUE DE FILTRAGE (Déplacée ici pour être utilisée par la carte) ---
+  const filteredShops = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return shops.filter(shop => 
+      shop.name.toLowerCase().includes(term) ||
+      shop.city.toLowerCase().includes(term) ||
+      (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
+    );
+  }, [shops, searchTerm]);
+
+
   // --- 2. GESTION DE LA CARTE ---
   
   const flyToShopWithOffset = useCallback((shop) => {
@@ -174,6 +186,7 @@ export default function App() {
     }
   }, []);
 
+  // MISE À JOUR DES MARQUEURS (Utilise maintenant filteredShops)
   const updateMarkers = useCallback((map) => {
     if (!window.L) return;
 
@@ -191,10 +204,12 @@ export default function App() {
       iconAnchor: [9, 9]
     });
 
+    // On nettoie TOUS les marqueurs existants
     Object.values(markersRef.current).forEach(marker => map.removeLayer(marker));
     markersRef.current = {};
 
-    shops.forEach(shop => {
+    // On ajoute SEULEMENT les marqueurs de la liste filtrée
+    filteredShops.forEach(shop => {
       if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
         const safeName = escapeHtml(shop.name);
         const safeCity = escapeHtml(shop.city);
@@ -228,7 +243,7 @@ export default function App() {
         markersRef.current[shop.id] = marker;
       }
     });
-  }, [shops, flyToShop, selectedShop]);
+  }, [filteredShops, flyToShop, selectedShop]); // Dépendance à filteredShops
 
   const initMap = useCallback(() => {
     if (!window.L || mapInstanceRef.current) return;
@@ -274,11 +289,12 @@ export default function App() {
     };
   }, [initMap]);
 
+  // Mise à jour des marqueurs quand le filtre change
   useEffect(() => {
     if (mapInstanceRef.current && window.L) {
         updateMarkers(mapInstanceRef.current);
     }
-  }, [shops, updateMarkers]);
+  }, [filteredShops, updateMarkers]); // Écoute les changements de filteredShops
 
   useEffect(() => {
     let timeoutId;
@@ -290,6 +306,7 @@ export default function App() {
     return () => clearTimeout(timeoutId);
   }, [isSidebarOpen, isDrawerExpanded]);
 
+  // Centrage initial
   useEffect(() => {
     let timeoutId;
     if (!mapInstanceRef.current || isLoading || shops.length === 0 || !window.L) return;
@@ -301,16 +318,7 @@ export default function App() {
   }, [isLoading]);
 
 
-  // --- 3. LOGIQUE MÉTIER ---
-
-  const filteredShops = useMemo(() => {
-    const term = searchTerm.toLowerCase();
-    return shops.filter(shop => 
-      shop.name.toLowerCase().includes(term) ||
-      shop.city.toLowerCase().includes(term) ||
-      (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
-    );
-  }, [shops, searchTerm]);
+  // --- 3. AUTRES FONCTIONS MÉTIER ---
 
   const toggleTag = (tag) => {
     setNewShopForm(prev => {
@@ -352,10 +360,14 @@ export default function App() {
 
   const searchByTag = (e, tag) => {
     e?.stopPropagation();
-    setSearchTerm(prev => prev === tag ? "" : tag);
+    setSearchTerm(prev => {
+        const newVal = prev === tag ? "" : tag;
+        if (newVal !== "") setIsDrawerExpanded(true); 
+        return newVal;
+    });
   };
 
-  // --- GESTION DU SWIPE FLUIDE (AMÉLIORÉE) ---
+  // --- GESTION DU SWIPE FLUIDE ---
   const handleTouchStart = (e) => {
     isDragging.current = true;
     dragStartY.current = e.touches[0].clientY;
@@ -374,7 +386,6 @@ export default function App() {
     const newHeight = dragStartHeight.current + deltaY;
     
     const maxHeight = window.innerHeight * 0.85;
-    // Hauteur minimale ajustée à 175px
     if (newHeight >= 175 && newHeight <= maxHeight) {
         drawerRef.current.style.height = `${newHeight}px`;
     }
@@ -386,20 +397,19 @@ export default function App() {
 
     drawerRef.current.style.transition = 'height 0.3s ease-out';
 
-    // Nouvelle logique basée sur la distance du swipe pour plus de réactivité
+    const currentHeight = drawerRef.current.getBoundingClientRect().height;
+    const threshold = 50; 
     const deltaY = dragStartY.current - e.changedTouches[0].clientY;
-    const threshold = 50; // Seuil de 50px
 
     if (Math.abs(deltaY) > threshold) {
-        if (deltaY > 0) { // Mouvement vers le haut
+        if (deltaY > 0) { 
             setIsDrawerExpanded(true);
             drawerRef.current.style.height = '85%';
-        } else { // Mouvement vers le bas
+        } else {
             setIsDrawerExpanded(false);
             drawerRef.current.style.height = '175px';
         }
     } else {
-        // Si mouvement trop petit, retour à l'état précédent
         if (isDrawerExpanded) {
              drawerRef.current.style.height = '85%';
         } else {
@@ -565,7 +575,6 @@ export default function App() {
       <div className="flex-1 relative overflow-hidden flex md:flex-row">
         
         {/* --- MOBILE UI OVERLAY (Recherche + Drawer) --- */}
-        {/* MODIF: Z-index augmenté à 2000 pour que le tiroir passe AU-DESSUS des boutons (z-1000) */}
         <div className="md:hidden absolute inset-0 z-[2000] pointer-events-none flex flex-col justify-between">
             
             {/* 1. BARRE DE RECHERCHE FLOTTANTE */}
@@ -613,11 +622,11 @@ export default function App() {
                 ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
                 style={{ 
-                    height: isDrawerExpanded ? '85%' : '175px', // 175px rétracté
+                    height: isDrawerExpanded ? '85%' : '175px',
                     touchAction: 'none'
                 }}
             >
-                {/* Poignée du tiroir (Zone de swipe) */}
+                {/* Poignée du tiroir */}
                 <div 
                     className="w-full flex justify-center items-center p-2 cursor-pointer hover:bg-white/5 rounded-t-3xl pt-3 select-none"
                     onTouchStart={handleTouchStart}
@@ -637,7 +646,7 @@ export default function App() {
                     {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques référencées`}
                 </div>
 
-                {/* BLOC D'APPEL À L'ACTION TOUJOURS VISIBLE EN HAUT DU CONTENU */}
+                {/* BLOC D'APPEL À L'ACTION */}
                 <div className="px-4 pb-2 select-none pointer-events-auto">
                      <div className="text-center p-3 bg-[#1e1e2e]/80 rounded-xl border border-gray-700/50 backdrop-blur-sm">
                         <p className="text-[10px] text-gray-400 mb-1">
@@ -788,7 +797,7 @@ export default function App() {
           <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1]" />
           
           {/* CONTROLES GOOGLE MAPS STYLE (Masqués si modal ouverte) */}
-          {!isModalOpen && (
+          {(!isModalOpen && !(isDrawerExpanded && window.innerWidth < 768)) && (
               <div className="custom-map-controls pointer-events-auto">
                  <button 
                     className="reset-view-btn"
@@ -819,14 +828,10 @@ export default function App() {
           )}
 
           {/* --- INFO PANEL (Tuile) --- */}
-          {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* Position mobile: au dessus du tiroir réduit + marge droite */
                         bottom-[170px] left-4 right-[66px] 
-                        /* Position desktop: ancré en bas à droite avec largeur fixe */
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
-                        /* MODIF : Arrondi 8px */
                         bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: '#d8b4fe' }}>
                <button 
@@ -881,7 +886,7 @@ export default function App() {
       {/* --- MODAL DE PROPOSITION --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#181825] border-2 w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8" style={{ borderColor: CONFIG.COLORS.YELLOW }}>
+          <div className={`bg-[#181825] border-2 w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8`} style={{ borderColor: CONFIG.COLORS.YELLOW }}>
             <button 
               onClick={() => setIsModalOpen(false)}
               className="absolute top-3 right-3 text-gray-500 hover:text-white"
