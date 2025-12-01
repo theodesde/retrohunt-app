@@ -407,7 +407,7 @@ export default function App() {
     
     const maxHeight = window.innerHeight * 0.85;
     // MODIF : Hauteur min 145px
-    if (newHeight >= 145 && newHeight <= maxHeight) {
+    if (newHeight >= 160 && newHeight <= maxHeight) {
         drawerRef.current.style.height = `${newHeight}px`;
     }
   };
