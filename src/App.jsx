@@ -33,7 +33,7 @@ const AVAILABLE_TAGS = [
   "Rétrogaming", "Next Gen", "Import Japon", "Arcade", "Figurines", "Réparations", "Goodies"
 ];
 
-// Fonction de sécurité standard
+// Fonction de sécurité standard (Syntaxe corrigée et sécurisée)
 const escapeHtml = (unsafe) => {
   if (!unsafe) return "";
   const map = {
@@ -128,7 +128,7 @@ export default function App() {
 
     if (window.innerWidth < 768) {
         const point = map.project([shop.lat, shop.lng], targetZoom);
-        // Offset ajusté (plus grand car tiroir plus haut)
+        // Offset ajusté pour le tiroir
         point.y = point.y + 100; 
         const targetLatLng = map.unproject(point, targetZoom);
         
@@ -173,63 +173,8 @@ export default function App() {
     }
   }, []);
 
-  const updateMarkers = useCallback((map) => {
-    if (!window.L) return;
-
-    const retroIcon = window.L.divIcon({
-      className: 'custom-div-icon',
-      html: `<div style="background-color: ${CONFIG.COLORS.PINK}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 8px ${CONFIG.COLORS.PINK}, 0 0 20px ${CONFIG.COLORS.PINK};"></div>`,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
-    });
-
-    const yellowIcon = window.L.divIcon({
-      className: 'custom-div-icon-selected',
-      html: `<div style="background-color: ${CONFIG.COLORS.YELLOW}; width: 18px; height: 18px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 15px ${CONFIG.COLORS.YELLOW}, 0 0 30px ${CONFIG.COLORS.YELLOW}; transform: scale(1.2);"></div>`,
-      iconSize: [18, 18],
-      iconAnchor: [9, 9]
-    });
-
-    Object.values(markersRef.current).forEach(marker => map.removeLayer(marker));
-    markersRef.current = {};
-
-    shops.forEach(shop => {
-      if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
-        const safeName = escapeHtml(shop.name);
-        const safeCity = escapeHtml(shop.city);
-        
-        const popupContent = `
-            <div style="font-family: 'Inter', sans-serif; color: #111;">
-              <strong style="font-family: 'Courier New', monospace; text-transform: uppercase;">${safeName}</strong>
-              ${shop.hallOfFame ? `<span style="background-color: ${CONFIG.COLORS.YELLOW}; color: black; font-size: 9px; padding: 1px 4px; margin-left: 6px; border-radius: 2px; font-weight: bold;">👑 HALL OF FAME</span>` : ''}
-              <br/>
-              ${safeCity}
-            </div>
-          `;
-
-        const isSelected = selectedShop?.id === shop.id;
-
-        const marker = window.L.marker([shop.lat, shop.lng], { 
-            icon: isSelected ? yellowIcon : retroIcon,
-            zIndexOffset: isSelected ? 1000 : 0 
-        })
-          .addTo(map)
-          .bindPopup(popupContent);
-        
-        if (isSelected) {
-            setTimeout(() => marker.openPopup(), 100);
-        }
-        
-        marker.on('click', () => {
-          flyToShop(shop); 
-        });
-
-        markersRef.current[shop.id] = marker;
-      }
-    });
-  }, [shops, flyToShop, selectedShop]);
-
-  // Version effective qui utilise la liste filtrée
+  // --- 3. LOGIQUE DE RENDU DES MARQUEURS ---
+  // Version stable qui utilise les shops filtrés ou non selon le contexte
   const renderMarkers = useCallback((mapInstance, shopsToRender) => {
     if (!window.L) return;
 
@@ -329,6 +274,22 @@ export default function App() {
     };
   }, [initMap]);
 
+  // FILTRAGE ET UPDATE MARKERS
+  const filteredShops = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return shops.filter(shop => 
+      shop.name.toLowerCase().includes(term) ||
+      shop.city.toLowerCase().includes(term) ||
+      (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
+    );
+  }, [shops, searchTerm]);
+
+  useEffect(() => {
+    if (mapInstanceRef.current && window.L) {
+        renderMarkers(mapInstanceRef.current, filteredShops);
+    }
+  }, [filteredShops, renderMarkers]);
+
   useEffect(() => {
     let timeoutId;
     if (mapInstanceRef.current) {
@@ -350,24 +311,7 @@ export default function App() {
   }, [isLoading]);
 
 
-  // --- 3. LOGIQUE MÉTIER ---
-
-  const filteredShops = useMemo(() => {
-    const term = searchTerm.toLowerCase();
-    return shops.filter(shop => 
-      shop.name.toLowerCase().includes(term) ||
-      shop.city.toLowerCase().includes(term) ||
-      (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
-    );
-  }, [shops, searchTerm]);
-
-  // Mise à jour des marqueurs
-  useEffect(() => {
-    if (mapInstanceRef.current && window.L) {
-        renderMarkers(mapInstanceRef.current, filteredShops);
-    }
-  }, [filteredShops, renderMarkers]);
-
+  // --- 4. AUTRES FONCTIONS MÉTIER ---
 
   const toggleTag = (tag) => {
     setNewShopForm(prev => {
@@ -431,8 +375,7 @@ export default function App() {
     const newHeight = dragStartHeight.current + deltaY;
     
     const maxHeight = window.innerHeight * 0.85;
-    // Hauteur minimale ajustée à 150px
-    if (newHeight >= 150 && newHeight <= maxHeight) {
+    if (newHeight >= 150 && newHeight <= maxHeight) { // Min 150px
         drawerRef.current.style.height = `${newHeight}px`;
     }
   };
@@ -477,7 +420,7 @@ export default function App() {
   // --- 5. RENDU ---
 
   return (
-    // MODIF : fixed inset-0 + reset global pour PWA
+    // FIX : Utilisation de fixed inset-0 pour éviter l'écran noir et les problèmes de scroll
     <div className="fixed inset-0 flex flex-col text-gray-100 font-sans overflow-hidden overscroll-none" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Press+Start+2P&display=swap');
@@ -487,13 +430,6 @@ export default function App() {
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: ${CONFIG.COLORS.PINK}; }
         
-        html, body, #root {
-          height: 100%;
-          width: 100%;
-          overflow: hidden;
-          position: fixed; /* Empêche le bounce iOS/Android */
-        }
-
         .scanlines {
           background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1));
           background-size: 100% 4px;
@@ -567,8 +503,7 @@ export default function App() {
 
         @media (max-width: 768px) {
             .custom-map-controls {
-                /* 150 + 30 (marge) = 180 */
-                bottom: calc(180px + env(safe-area-inset-bottom)) !important;
+                bottom: calc(165px + env(safe-area-inset-bottom)) !important;
                 right: 10px;
             }
         }
@@ -590,7 +525,6 @@ export default function App() {
             {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
           
-          {/* RETOUR DU LOGO ANIME */}
           <div className="text-2xl animate-bounce">🕹️</div>
           <div className="flex flex-col justify-center">
             <div className="flex items-center gap-2">
@@ -609,12 +543,10 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-2">
-            {/* BOUTON REFRESH A GAUCHE DU '+' */}
             <button onClick={handleReloadApp} className="transition-colors hover:text-white p-2" style={{ color: CONFIG.COLORS.PINK }} title="Rafraîchir">
               <RefreshCw size={20} />
             </button>
 
-            {/* BOUTON AJOUT SIMPLIFIÉ MOBILE */}
             <button 
               onClick={() => setIsModalOpen(true)}
               className="bg-transparent border-2 hover:text-black transition-all px-3 py-2 font-pixel text-[8px] md:text-[10px] flex items-center gap-2 rounded-xl"
@@ -641,10 +573,9 @@ export default function App() {
       {/* --- CONTENEUR PRINCIPAL --- */}
       <div className="flex-1 relative overflow-hidden flex md:flex-row">
         
-        {/* --- MOBILE UI OVERLAY (Recherche + Drawer) --- */}
+        {/* --- MOBILE UI OVERLAY --- */}
         <div className="md:hidden absolute inset-0 z-[2000] pointer-events-none flex flex-col justify-between">
             
-            {/* 1. BARRE DE RECHERCHE FLOTTANTE */}
             <div className="p-4 pointer-events-auto mt-2">
                 <div className="relative shadow-lg rounded-full overflow-hidden">
                   <Search className="absolute left-4 top-3 text-gray-400" size={18} />
@@ -667,7 +598,6 @@ export default function App() {
                   )}
                 </div>
                 
-                {/* Tags de filtre */}
                 <div className="flex gap-2 mt-3 overflow-x-auto pb-2 hide-scrollbar px-1">
                     {AVAILABLE_TAGS.map(tag => (
                         <button
@@ -686,19 +616,17 @@ export default function App() {
                 </div>
             </div>
 
-            {/* 2. TIROIR (DRAWER) EN BAS AVEC SWIPE */}
+            {/* TIROIR MOBILE */}
             <div 
                 ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
                 style={{ 
-                    // MODIF: 150px de hauteur de base + safe area
                     height: isDrawerExpanded ? '85%' : '150px', 
                     touchAction: 'none',
                     zIndex: 2000,
                     paddingBottom: 'env(safe-area-inset-bottom)'
                 }}
             >
-                {/* Poignée du tiroir (Zone de swipe) */}
                 <div 
                     className="w-full flex justify-center items-center p-2 cursor-pointer hover:bg-white/5 rounded-t-3xl pt-3 select-none"
                     onTouchStart={handleTouchStart}
@@ -719,7 +647,6 @@ export default function App() {
                     {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques référencées`}
                 </div>
 
-                {/* BLOC D'APPEL À L'ACTION TOUJOURS VISIBLE EN HAUT DU CONTENU */}
                 <div className="px-4 pb-2 select-none pointer-events-auto">
                      <div className="text-center p-3 bg-[#1e1e2e]/80 rounded-xl border border-gray-700/50 backdrop-blur-sm">
                         <p className="text-[10px] text-gray-400 mb-1">
@@ -734,7 +661,6 @@ export default function App() {
                      </div>
                 </div>
 
-                {/* Contenu du tiroir */}
                 <div className={`flex-1 overflow-y-auto p-4 pt-0 space-y-3 pb-8 ${!isDrawerExpanded ? 'hidden' : ''}`}>
                     {filteredShops.map(shop => (
                         <div 
@@ -869,7 +795,7 @@ export default function App() {
         <div className="flex-1 relative bg-[#0f0f15] h-full overflow-hidden">
           <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1]" />
           
-          {/* CONTROLES GOOGLE MAPS STYLE (Masqués si modal ouverte) */}
+          {/* CONTROLES GOOGLE MAPS STYLE */}
           {!isModalOpen && (
               <div className="custom-map-controls pointer-events-auto">
                  <button 
@@ -904,13 +830,14 @@ export default function App() {
           {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* MODIF : Remonté à 160px (150 + 10 marge) + safe area */
-                        bottom-[calc(160px+env(safe-area-inset-bottom))] left-4 right-[66px] 
+                        /* MODIF : Remonté à 165px + safe area */
+                        bottom-[calc(165px+env(safe-area-inset-bottom))] left-4 right-[66px] 
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
-                        bg-[#11111b]/95 backdrop-blur border-t-4 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
+                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: CONFIG.COLORS.PINK }}>
                <button 
-                onClick={() => {setSelectedShop(null); if(mapInstanceRef.current) mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });}}
+                // FIX : Pas de flyTo sur fermeture
+                onClick={() => setSelectedShop(null)}
                 className="absolute top-2 right-2 text-gray-500 hover:text-white"
               >
                 <X size={18} />
@@ -969,7 +896,7 @@ export default function App() {
               <X size={24} />
             </button>
 
-            <h2 className={`font-pixel text-[${CONFIG.COLORS.YELLOW}] text-xs mb-6 text-center border-b border-gray-700 pb-4`} style={{ color: CONFIG.COLORS.YELLOW }}>
+            <h2 className={`font-pixel text-xs mb-6 text-center border-b border-gray-700 pb-4`} style={{ color: CONFIG.COLORS.YELLOW }}>
               Let's go hunt !
             </h2>
 
