@@ -56,6 +56,8 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // État pour le tiroir mobile (Drawer)
   const [isDrawerExpanded, setIsDrawerExpanded] = useState(false);
 
   const [newShopForm, setNewShopForm] = useState({ 
@@ -67,6 +69,8 @@ export default function App() {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef({});
+  
+  // Refs pour la gestion du Swipe fluide
   const drawerRef = useRef(null);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
@@ -116,7 +120,7 @@ export default function App() {
     return () => { isMounted = false; };
   }, []);
 
-  // --- 2. LOGIQUE DE FILTRAGE (DÉPLACÉE ICI POUR ÊTRE ACCESSIBLE PAR LA CARTE) ---
+  // --- 2. LOGIQUE DE FILTRAGE (PLACÉE AVANT LES MARKERS) ---
   const filteredShops = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return shops.filter(shop => 
@@ -125,7 +129,6 @@ export default function App() {
       (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
     );
   }, [shops, searchTerm]);
-
 
   // --- 3. GESTION DE LA CARTE ---
   
@@ -181,7 +184,7 @@ export default function App() {
     }
   }, []);
 
-  // MISE À JOUR DES MARQUEURS (Utilise maintenant filteredShops)
+  // MISE À JOUR DES MARQUEURS (Basé sur filteredShops)
   const updateMarkers = useCallback((map) => {
     if (!window.L) return;
 
@@ -199,11 +202,10 @@ export default function App() {
       iconAnchor: [9, 9]
     });
 
-    // On nettoie TOUS les marqueurs existants
     Object.values(markersRef.current).forEach(marker => map.removeLayer(marker));
     markersRef.current = {};
 
-    // On ajoute SEULEMENT les marqueurs de la liste filtrée
+    // Utilisation de filteredShops pour ne montrer que les résultats de la recherche
     filteredShops.forEach(shop => {
       if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
         const safeName = escapeHtml(shop.name);
@@ -238,7 +240,7 @@ export default function App() {
         markersRef.current[shop.id] = marker;
       }
     });
-  }, [filteredShops, flyToShop, selectedShop]); // Dépendance à filteredShops
+  }, [filteredShops, flyToShop, selectedShop]);
 
   const initMap = useCallback(() => {
     if (!window.L || mapInstanceRef.current) return;
@@ -289,7 +291,7 @@ export default function App() {
     if (mapInstanceRef.current && window.L) {
         updateMarkers(mapInstanceRef.current);
     }
-  }, [filteredShops, updateMarkers]); // Écoute les changements de filteredShops
+  }, [filteredShops, updateMarkers]);
 
   useEffect(() => {
     let timeoutId;
@@ -564,6 +566,7 @@ export default function App() {
       <div className="flex-1 relative overflow-hidden flex md:flex-row">
         
         {/* --- MOBILE UI OVERLAY (Recherche + Drawer) --- */}
+        {/* MODIF: z-[2000] pour passer au-dessus des boutons de la carte */}
         <div className="md:hidden absolute inset-0 z-[2000] pointer-events-none flex flex-col justify-between">
             
             {/* 1. BARRE DE RECHERCHE FLOTTANTE */}
@@ -640,7 +643,7 @@ export default function App() {
                     {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques référencées`}
                 </div>
 
-                {/* BLOC D'APPEL À L'ACTION TOUJOURS VISIBLE EN HAUT DU CONTENU */}
+                {/* BLOC D'APPEL À L'ACTION */}
                 <div className="px-4 pb-2 select-none pointer-events-auto">
                      <div className="text-center p-3 bg-[#1e1e2e]/80 rounded-xl border border-gray-700/50 backdrop-blur-sm">
                         <p className="text-[10px] text-gray-400 mb-1">
@@ -691,7 +694,7 @@ export default function App() {
         </div>
 
 
-        {/* --- DESKTOP SIDEBAR --- */}
+        {/* --- DESKTOP SIDEBAR (Inchangée) --- */}
         <div className={`
           hidden md:flex z-10 bg-[#181825]/95 backdrop-blur-md 
           border-r border-gray-800 
@@ -790,8 +793,8 @@ export default function App() {
         <div className="flex-1 relative bg-[#0f0f15] h-full overflow-hidden">
           <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1]" />
           
-          {/* CONTROLES GOOGLE MAPS STYLE (Masqués si modal ou tiroir ouvert sur mobile) */}
-          {(!isModalOpen && !(isDrawerExpanded && window.innerWidth < 768)) && (
+          {/* CONTROLES GOOGLE MAPS STYLE (Masqués si modal ouverte) */}
+          {!isModalOpen && (
               <div className="custom-map-controls pointer-events-auto">
                  <button 
                     className="reset-view-btn"
@@ -825,12 +828,9 @@ export default function App() {
           {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* Position mobile: au dessus du tiroir réduit + marge droite */
                         bottom-[185px] left-4 right-[66px] 
-                        /* Position desktop: ancré en bas à droite avec largeur fixe */
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
-                        /* MODIF : Arrondi 8px + Bordure Rose */
-                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
+                        bg-[#11111b]/95 backdrop-blur border-t-4 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: CONFIG.COLORS.PINK }}>
                <button 
                 onClick={() => {setSelectedShop(null); if(mapInstanceRef.current) mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });}}
@@ -883,7 +883,7 @@ export default function App() {
 
       {/* --- MODAL DE PROPOSITION --- */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-[3000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className={`bg-[#181825] border-2 w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8`} style={{ borderColor: CONFIG.COLORS.YELLOW }}>
             <button 
               onClick={() => setIsModalOpen(false)}
@@ -917,7 +917,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm`}
+                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
                       style={{ borderColor: '#374151' }}
                       onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                       onBlur={(e) => e.target.style.borderColor = '#374151'}
@@ -931,7 +931,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm`}
+                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
                       style={{ borderColor: '#374151' }}
                       onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                       onBlur={(e) => e.target.style.borderColor = '#374151'}
@@ -947,7 +947,7 @@ export default function App() {
                   <input 
                     required
                     type="text" 
-                    className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm`}
+                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
                     style={{ borderColor: '#374151' }}
                     onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                     onBlur={(e) => e.target.style.borderColor = '#374151'}
@@ -987,7 +987,7 @@ export default function App() {
                 <div>
                   <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
                   <textarea 
-                    className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm`}
+                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm"
                     style={{ borderColor: '#374151' }}
                     onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                     onBlur={(e) => e.target.style.borderColor = '#374151'}
