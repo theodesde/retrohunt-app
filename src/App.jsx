@@ -128,8 +128,8 @@ export default function App() {
 
     if (window.innerWidth < 768) {
         const point = map.project([shop.lat, shop.lng], targetZoom);
-        // Offset réduit car le tiroir est plus bas
-        point.y = point.y + 50; 
+        // Offset ajusté pour la nouvelle hauteur du tiroir
+        point.y = point.y + 100; 
         const targetLatLng = map.unproject(point, targetZoom);
         
         map.flyTo(targetLatLng, targetZoom, { duration: 1.5 });
@@ -373,8 +373,8 @@ export default function App() {
     const newHeight = dragStartHeight.current + deltaY;
     
     const maxHeight = window.innerHeight * 0.85;
-    // MODIF : Hauteur minimale passée à 60px
-    if (newHeight >= 60 && newHeight <= maxHeight) {
+    // MODIF : Hauteur minimale passée à 150px
+    if (newHeight >= 150 && newHeight <= maxHeight) {
         drawerRef.current.style.height = `${newHeight}px`;
     }
   };
@@ -394,13 +394,13 @@ export default function App() {
             drawerRef.current.style.height = '85%';
         } else {
             setIsDrawerExpanded(false);
-            drawerRef.current.style.height = '60px'; // MODIF : 60px
+            drawerRef.current.style.height = '150px'; // MODIF : 150px
         }
     } else {
         if (isDrawerExpanded) {
              drawerRef.current.style.height = '85%';
         } else {
-             drawerRef.current.style.height = '60px'; // MODIF : 60px
+             drawerRef.current.style.height = '150px'; // MODIF : 150px
         }
     }
   };
@@ -496,7 +496,7 @@ export default function App() {
 
         @media (max-width: 768px) {
             .custom-map-controls {
-                bottom: 80px !important; /* MODIF : Ajusté pour être juste au-dessus du tiroir réduit */
+                bottom: 170px !important; /* MODIF : 150px + 20px marge */
                 right: 10px;
             }
         }
@@ -611,7 +611,7 @@ export default function App() {
                 ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
                 style={{ 
-                    height: isDrawerExpanded ? '85%' : '60px', // MODIF : 60px
+                    height: isDrawerExpanded ? '85%' : '150px', // MODIF : 150px
                     touchAction: 'none',
                     zIndex: 2000
                 }}
@@ -789,7 +789,7 @@ export default function App() {
           <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1]" />
           
           {/* CONTROLES GOOGLE MAPS STYLE (Masqués si modal ouverte) */}
-          {(!isModalOpen && !(isDrawerExpanded && window.innerWidth < 768)) && (
+          {!isModalOpen && (
               <div className="custom-map-controls pointer-events-auto">
                  <button 
                     className="reset-view-btn"
@@ -823,8 +823,8 @@ export default function App() {
           {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* MODIF : Remonté à 80px pour matcher le tiroir réduit */
-                        bottom-[80px] left-4 right-[66px] 
+                        /* MODIF : Remonté à 160px pour matcher le tiroir réduit de 150px */
+                        bottom-[160px] left-4 right-[66px] 
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
                         bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: CONFIG.COLORS.PINK }}>
@@ -883,12 +883,12 @@ export default function App() {
           <div className={`bg-[#181825] border-2 w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8`} style={{ borderColor: CONFIG.COLORS.YELLOW }}>
             <button 
               onClick={() => setIsModalOpen(false)}
-              className={`absolute top-3 right-3 text-gray-500 hover:text-[${CONFIG.COLORS.YELLOW}]`}
+              className={`absolute top-3 right-3 text-gray-500 hover:text-white`}
             >
               <X size={24} />
             </button>
 
-            <h2 className={`font-pixel text-[${CONFIG.COLORS.YELLOW}] text-xs mb-6 text-center border-b border-gray-700 pb-4`} style={{ color: CONFIG.COLORS.YELLOW }}>
+            <h2 className={`font-pixel text-xs mb-6 text-center border-b border-gray-700 pb-4`} style={{ color: CONFIG.COLORS.YELLOW }}>
               Let's go hunt !
             </h2>
 
@@ -983,7 +983,7 @@ export default function App() {
                 <div>
                   <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
                   <textarea 
-                    className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm`}
+                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm"
                     style={{ borderColor: '#374151' }}
                     onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                     onBlur={(e) => e.target.style.borderColor = '#374151'}
