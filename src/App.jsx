@@ -56,6 +56,8 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // État pour le tiroir mobile (Drawer)
   const [isDrawerExpanded, setIsDrawerExpanded] = useState(false);
 
   const [newShopForm, setNewShopForm] = useState({ 
@@ -232,7 +234,7 @@ export default function App() {
     if (!window.L || mapInstanceRef.current) return;
     
     const map = window.L.map(mapRef.current, {
-        zoomControl: false 
+        zoomControl: false
     }).setView(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom);
     
     mapInstanceRef.current = map;
@@ -350,11 +352,7 @@ export default function App() {
 
   const searchByTag = (e, tag) => {
     e?.stopPropagation();
-    setSearchTerm(prev => {
-        const newVal = prev === tag ? "" : tag;
-        if (newVal !== "") setIsDrawerExpanded(true); 
-        return newVal;
-    });
+    setSearchTerm(prev => prev === tag ? "" : tag);
   };
 
   // --- GESTION DU SWIPE FLUIDE (AMÉLIORÉE) ---
@@ -373,12 +371,10 @@ export default function App() {
 
     const currentY = e.touches[0].clientY;
     const deltaY = dragStartY.current - currentY;
-    
-    // Facteur d'amortissement pour un feeling plus naturel
     const newHeight = dragStartHeight.current + deltaY;
-    const maxHeight = window.innerHeight * 0.85;
     
-    // 175px est la hauteur minimale (tiroir fermé)
+    const maxHeight = window.innerHeight * 0.85;
+    // Hauteur minimale ajustée à 175px
     if (newHeight >= 175 && newHeight <= maxHeight) {
         drawerRef.current.style.height = `${newHeight}px`;
     }
@@ -387,24 +383,23 @@ export default function App() {
   const handleTouchEnd = (e) => {
     if (!isDragging.current || !drawerRef.current) return;
     isDragging.current = false;
-    
-    // Réactiver la transition pour le "snap"
+
     drawerRef.current.style.transition = 'height 0.3s ease-out';
-    
-    // Nouvelle logique de seuil basée sur la distance parcourue
+
+    // Nouvelle logique basée sur la distance du swipe pour plus de réactivité
     const deltaY = dragStartY.current - e.changedTouches[0].clientY;
-    const threshold = 50; // Seuil de 50px de mouvement pour déclencher
-    
+    const threshold = 50; // Seuil de 50px
+
     if (Math.abs(deltaY) > threshold) {
-        if (deltaY > 0) { // Mouvement vers le haut -> Ouvrir
+        if (deltaY > 0) { // Mouvement vers le haut
             setIsDrawerExpanded(true);
             drawerRef.current.style.height = '85%';
-        } else { // Mouvement vers le bas -> Fermer
+        } else { // Mouvement vers le bas
             setIsDrawerExpanded(false);
             drawerRef.current.style.height = '175px';
         }
     } else {
-        // Si pas assez bougé, on remet à l'état précédent
+        // Si mouvement trop petit, retour à l'état précédent
         if (isDrawerExpanded) {
              drawerRef.current.style.height = '85%';
         } else {
@@ -448,7 +443,7 @@ export default function App() {
             position: absolute;
             bottom: 24px;
             right: 12px;
-            z-index: 1000; /* Z-Index inférieur au tiroir (2000) */
+            z-index: 1000;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -504,7 +499,7 @@ export default function App() {
 
         @media (max-width: 768px) {
             .custom-map-controls {
-                bottom: 195px !important; /* Remonté de 15px pour matcher le tiroir */
+                bottom: 195px !important; 
                 right: 10px;
             }
         }
@@ -570,7 +565,8 @@ export default function App() {
       <div className="flex-1 relative overflow-hidden flex md:flex-row">
         
         {/* --- MOBILE UI OVERLAY (Recherche + Drawer) --- */}
-        <div className="md:hidden absolute inset-0 z-20 pointer-events-none flex flex-col justify-between">
+        {/* MODIF: Z-index augmenté à 2000 pour que le tiroir passe AU-DESSUS des boutons (z-1000) */}
+        <div className="md:hidden absolute inset-0 z-[2000] pointer-events-none flex flex-col justify-between">
             
             {/* 1. BARRE DE RECHERCHE FLOTTANTE */}
             <div className="p-4 pointer-events-auto mt-2">
@@ -584,13 +580,7 @@ export default function App() {
                         backgroundColor: 'rgba(24, 24, 37, 0.95)',
                     }}
                     value={searchTerm}
-                    onChange={(e) => {
-                        setSearchTerm(e.target.value);
-                        // Ouvre le tiroir si on tape
-                        if(e.target.value.trim() !== '' && !isDrawerExpanded) {
-                            setIsDrawerExpanded(true);
-                        }
-                    }}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                   />
                   {searchTerm && (
                     <button onClick={() => setSearchTerm('')} className="absolute right-4 top-3 text-gray-500 hover:text-white">
@@ -622,11 +612,9 @@ export default function App() {
             <div 
                 ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
-                // Z-Index 2000 pour passer au dessus des boutons de carte
                 style={{ 
-                    height: isDrawerExpanded ? '85%' : '175px', // +15px
-                    touchAction: 'none',
-                    zIndex: 2000 
+                    height: isDrawerExpanded ? '85%' : '175px', // 175px rétracté
+                    touchAction: 'none'
                 }}
             >
                 {/* Poignée du tiroir (Zone de swipe) */}
@@ -640,18 +628,16 @@ export default function App() {
                     <div className="w-10 h-1 bg-gray-500 rounded-full mb-1"></div>
                 </div>
                 <div 
-                    className="text-center text-[10px] text-gray-500 font-pixel mb-3 uppercase tracking-wider select-none flex items-center justify-center gap-2" 
+                    className="text-center text-[10px] text-gray-500 font-pixel mb-3 uppercase tracking-wider select-none" 
                     onTouchStart={handleTouchStart}
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
                     onClick={toggleDrawer}
                 >
-                     {/* Indicateur de swipe avec Chevron */}
-                    {!isDrawerExpanded ? <ChevronUp size={14} className="animate-bounce text-[#facc15]" /> : <ChevronDown size={14} />}
                     {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques référencées`}
                 </div>
 
-                {/* BLOC D'APPEL À L'ACTION */}
+                {/* BLOC D'APPEL À L'ACTION TOUJOURS VISIBLE EN HAUT DU CONTENU */}
                 <div className="px-4 pb-2 select-none pointer-events-auto">
                      <div className="text-center p-3 bg-[#1e1e2e]/80 rounded-xl border border-gray-700/50 backdrop-blur-sm">
                         <p className="text-[10px] text-gray-400 mb-1">
@@ -801,41 +787,47 @@ export default function App() {
         <div className="flex-1 relative bg-[#0f0f15] h-full overflow-hidden">
           <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1]" />
           
-          {/* CONTROLES GOOGLE MAPS STYLE */}
-          <div className="custom-map-controls pointer-events-auto">
-             <button 
-                className="reset-view-btn"
-                onClick={resetMapToDefault}
-                title="Vue globale"
-             >
-                <Globe size={20} />
-             </button>
-             
-             <div className="zoom-buttons">
+          {/* CONTROLES GOOGLE MAPS STYLE (Masqués si modal ouverte) */}
+          {!isModalOpen && (
+              <div className="custom-map-controls pointer-events-auto">
                  <button 
-                    className="zoom-btn"
-                    onClick={handleZoomIn}
-                    title="Zoom avant"
+                    className="reset-view-btn"
+                    onClick={resetMapToDefault}
+                    title="Vue globale"
                  >
-                    <Plus size={20} />
+                    <Globe size={20} />
                  </button>
                  
-                 <button 
-                    className="zoom-btn"
-                    onClick={handleZoomOut}
-                    title="Zoom arrière"
-                 >
-                    <Minus size={20} />
-                 </button>
-             </div>
-          </div>
+                 <div className="zoom-buttons">
+                     <button 
+                        className="zoom-btn"
+                        onClick={handleZoomIn}
+                        title="Zoom avant"
+                     >
+                        <Plus size={20} />
+                     </button>
+                     
+                     <button 
+                        className="zoom-btn"
+                        onClick={handleZoomOut}
+                        title="Zoom arrière"
+                     >
+                        <Minus size={20} />
+                     </button>
+                 </div>
+              </div>
+          )}
 
           {/* --- INFO PANEL (Tuile) --- */}
+          {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        bottom-[185px] left-4 right-[66px] 
+                        /* Position mobile: au dessus du tiroir réduit + marge droite */
+                        bottom-[170px] left-4 right-[66px] 
+                        /* Position desktop: ancré en bas à droite avec largeur fixe */
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
-                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-3xl md:rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
+                        /* MODIF : Arrondi 8px */
+                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: '#d8b4fe' }}>
                <button 
                 onClick={() => {setSelectedShop(null); if(mapInstanceRef.current) mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });}}
@@ -889,7 +881,7 @@ export default function App() {
       {/* --- MODAL DE PROPOSITION --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className={`bg-[#181825] border-2 w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8`} style={{ borderColor: CONFIG.COLORS.YELLOW }}>
+          <div className="bg-[#181825] border-2 w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8" style={{ borderColor: CONFIG.COLORS.YELLOW }}>
             <button 
               onClick={() => setIsModalOpen(false)}
               className="absolute top-3 right-3 text-gray-500 hover:text-white"
