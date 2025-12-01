@@ -33,17 +33,15 @@ const AVAILABLE_TAGS = [
   "Rétrogaming", "Next Gen", "Import Japon", "Arcade", "Figurines", "Réparations", "Goodies"
 ];
 
-// Fonction de sécurité standard
+// CORRECTION SÉCURISÉE : Remplacement simple sans objet pour éviter les erreurs de syntaxe
 const escapeHtml = (unsafe) => {
   if (!unsafe) return "";
-  const map = {
-    '&': '&',
-    '<': '<',
-    '>': '>',
-    '"': '"',
-    "'": "'"
-  };
-  return unsafe.replace(/[&<>"']/g, (m) => map[m]);
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 };
 
 // ==================================================================================
@@ -128,7 +126,6 @@ export default function App() {
     );
   }, [shops, searchTerm]);
 
-
   // --- 3. GESTION DE LA CARTE ---
   
   const flyToShopWithOffset = useCallback((shop) => {
@@ -139,8 +136,8 @@ export default function App() {
 
     if (window.innerWidth < 768) {
         const point = map.project([shop.lat, shop.lng], targetZoom);
-        // Offset ajusté pour le tiroir
-        point.y = point.y + 80; 
+        // Offset ajusté pour le tiroir compact (135px)
+        point.y = point.y + 100; 
         const targetLatLng = map.unproject(point, targetZoom);
         
         map.flyTo(targetLatLng, targetZoom, { duration: 1.5 });
@@ -202,11 +199,9 @@ export default function App() {
       iconAnchor: [9, 9]
     });
 
-    // Nettoyage
     Object.values(markersRef.current).forEach(marker => mapInstance.removeLayer(marker));
     markersRef.current = {};
 
-    // Rendu de la liste filtrée
     shopsToRender.forEach(shop => {
       if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
         const safeName = escapeHtml(shop.name);
@@ -286,7 +281,7 @@ export default function App() {
     };
   }, [initMap]);
 
-  // CORRECTION FILTRE LIVE
+  // Mise à jour des marqueurs (Filtre Live)
   useEffect(() => {
     if (mapInstanceRef.current && window.L) {
         renderMarkers(mapInstanceRef.current, filteredShops);
@@ -313,6 +308,9 @@ export default function App() {
     }
     return () => clearTimeout(timeoutId);
   }, [isLoading]);
+
+
+  // --- 4. AUTRES FONCTIONS MÉTIER ---
 
   const toggleTag = (tag) => {
     setNewShopForm(prev => {
@@ -421,7 +419,9 @@ export default function App() {
   // --- 5. RENDU ---
 
   return (
-    <div className="absolute inset-0 flex flex-col text-gray-100 font-sans overflow-hidden overscroll-none" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
+    // MODIF : absolute inset-0 pour s'assurer que ça prend tout l'écran sans scroll body
+    // On utilise html, body height: 100% dans le style pour figer le layout
+    <div className="absolute inset-0 flex flex-col text-gray-100 font-sans overflow-hidden" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Press+Start+2P&display=swap');
         .font-pixel { font-family: 'Press Start 2P', cursive; }
@@ -430,11 +430,14 @@ export default function App() {
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: ${CONFIG.COLORS.PINK}; }
         
+        /* FIX MOBILE SCROLL : On fige le body et html à 100% */
         html, body, #root {
           height: 100%;
           width: 100%;
+          margin: 0;
+          padding: 0;
           overflow: hidden;
-          position: fixed;
+          position: fixed; /* Empêche le rebond sur iOS */
         }
 
         .scanlines {
@@ -467,8 +470,7 @@ export default function App() {
             background-color: white;
             color: #666666;
             border: none;
-            /* MODIF: Arrondi cohérent */
-            border-radius: 12px; 
+            border-radius: 8px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             display: flex;
             align-items: center;
@@ -485,8 +487,7 @@ export default function App() {
             display: flex;
             flex-direction: column;
             background: white;
-            /* MODIF: Arrondi cohérent */
-            border-radius: 12px;
+            border-radius: 8px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             overflow: hidden;
         }
@@ -512,8 +513,7 @@ export default function App() {
 
         @media (max-width: 768px) {
             .custom-map-controls {
-                /* 135 + 10 = 145px + Safe Area */
-                bottom: calc(145px + env(safe-area-inset-bottom)) !important;
+                bottom: 145px !important;
                 right: 10px;
             }
         }
@@ -535,8 +535,7 @@ export default function App() {
             {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
           
-          {/* RETOUR DU JOYSTICK */}
-          <div className="text-2xl animate-bounce">🕹️</div>
+          <div className="text-2xl animate-bounce hidden md:block">🕹️</div>
           <div className="flex flex-col justify-center">
             <div className="flex items-center gap-2">
                <h1 className="font-pixel text-[10px] md:text-xs text-white tracking-widest text-shadow-sm uppercase">
@@ -554,15 +553,14 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-2">
-            {/* MODIF : BOUTON REFRESH A GAUCHE DU '+' */}
+            {/* BOUTON REFRESH */}
             <button onClick={handleReloadApp} className="transition-colors hover:text-white p-2" style={{ color: CONFIG.COLORS.PINK }} title="Rafraîchir">
               <RefreshCw size={20} />
             </button>
 
-            {/* MODIF : BOUTON AJOUT ARRONDIS + LOGO SEUL SUR MOBILE */}
+            {/* BOUTON AJOUT */}
             <button 
               onClick={() => setIsModalOpen(true)}
-              // Ajout de rounded-xl pour l'arrondi
               className="bg-transparent border-2 hover:text-black transition-all px-3 py-2 font-pixel text-[8px] md:text-[10px] flex items-center gap-2 rounded-xl"
               style={{ 
                 borderColor: CONFIG.COLORS.YELLOW, 
@@ -637,7 +635,7 @@ export default function App() {
                 ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
                 style={{ 
-                    height: isDrawerExpanded ? '85%' : '135px',
+                    height: isDrawerExpanded ? '85%' : '135px', 
                     touchAction: 'none',
                     zIndex: 2000,
                     paddingBottom: 'env(safe-area-inset-bottom)'
@@ -664,7 +662,7 @@ export default function App() {
                     {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques référencées`}
                 </div>
 
-                {/* BLOC D'APPEL À L'ACTION TOUJOURS VISIBLE EN HAUT DU CONTENU */}
+                {/* BLOC D'APPEL À L'ACTION TOUJOURS VISIBLE */}
                 <div className="px-4 pb-2 select-none pointer-events-auto">
                      <div className="text-center p-3 bg-[#1e1e2e]/80 rounded-xl border border-gray-700/50 backdrop-blur-sm">
                         <p className="text-[10px] text-gray-400 mb-1">
@@ -814,7 +812,7 @@ export default function App() {
         <div className="flex-1 relative bg-[#0f0f15] h-full overflow-hidden">
           <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1]" />
           
-          {/* CONTROLES GOOGLE MAPS STYLE (Masqués si modal ouverte) */}
+          {/* CONTROLES GOOGLE MAPS STYLE */}
           {!isModalOpen && (
               <div className="custom-map-controls pointer-events-auto">
                  <button 
@@ -846,11 +844,9 @@ export default function App() {
           )}
 
           {/* --- INFO PANEL (Tuile) --- */}
-          {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* MODIF : Remonté à 140px + safe area */
-                        bottom-[calc(140px+env(safe-area-inset-bottom))] left-4 right-[66px] 
+                        bottom-[145px] left-4 right-[66px] 
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
                         bg-[#11111b]/95 backdrop-blur border-t-4 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: CONFIG.COLORS.PINK }}>
