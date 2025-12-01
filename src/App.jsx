@@ -128,7 +128,7 @@ export default function App() {
 
     if (window.innerWidth < 768) {
         const point = map.project([shop.lat, shop.lng], targetZoom);
-        // Offset ajusté pour le tiroir compact
+        // Offset maintenu à 80px pour le tiroir de 135px
         point.y = point.y + 80; 
         const targetLatLng = map.unproject(point, targetZoom);
         
@@ -354,7 +354,6 @@ export default function App() {
     setSearchTerm(prev => prev === tag ? "" : tag);
   };
 
-  // --- GESTION DU SWIPE FLUIDE ---
   const handleTouchStart = (e) => {
     isDragging.current = true;
     dragStartY.current = e.touches[0].clientY;
@@ -373,8 +372,7 @@ export default function App() {
     const newHeight = dragStartHeight.current + deltaY;
     
     const maxHeight = window.innerHeight * 0.85;
-    // MODIF : Hauteur min abaissée à 130px pour le browser
-    if (newHeight >= 130 && newHeight <= maxHeight) {
+    if (newHeight >= 135 && newHeight <= maxHeight) {
         drawerRef.current.style.height = `${newHeight}px`;
     }
   };
@@ -394,15 +392,13 @@ export default function App() {
             drawerRef.current.style.height = '85%';
         } else {
             setIsDrawerExpanded(false);
-            // MODIF: 130px rétracté
-            drawerRef.current.style.height = '130px';
+            drawerRef.current.style.height = '135px';
         }
     } else {
         if (isDrawerExpanded) {
              drawerRef.current.style.height = '85%';
         } else {
-             // MODIF: 130px rétracté
-             drawerRef.current.style.height = '130px';
+             drawerRef.current.style.height = '135px';
         }
     }
   };
@@ -417,7 +413,8 @@ export default function App() {
   // --- 5. RENDU ---
 
   return (
-    <div className="flex flex-col h-[100dvh] w-screen text-gray-100 font-sans overflow-hidden fixed inset-0 overscroll-none" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
+    // MODIF : absolute inset-0 + fix global pour PWA
+    <div className="absolute inset-0 flex flex-col text-gray-100 font-sans overflow-hidden overscroll-none" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Press+Start+2P&display=swap');
         .font-pixel { font-family: 'Press Start 2P', cursive; }
@@ -425,6 +422,15 @@ export default function App() {
         ::-webkit-scrollbar-track { background: #111; }
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: ${CONFIG.COLORS.PINK}; }
+        
+        /* RESET GLOBAL PWA */
+        html, body, #root {
+          height: 100%;
+          width: 100%;
+          overflow: hidden;
+          position: fixed; /* Empêche le bounce iOS */
+        }
+
         .scanlines {
           background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1));
           background-size: 100% 4px;
@@ -498,15 +504,15 @@ export default function App() {
 
         @media (max-width: 768px) {
             .custom-map-controls {
-                /* MODIF : 140px (130 + 10) + safe area */
-                bottom: calc(140px + env(safe-area-inset-bottom)) !important;
+                /* MODIF : 135 + 10 = 145px + Safe Area */
+                bottom: calc(145px + env(safe-area-inset-bottom)) !important;
                 right: 10px;
             }
         }
       `}</style>
 
       {/* --- HEADER (Fixe) --- */}
-      <header className="h-16 flex items-center justify-between px-4 z-50 shrink-0 sticky top-0"
+      <header className="h-16 flex items-center justify-between px-4 z-50 shrink-0 relative"
               style={{ 
                 backgroundColor: CONFIG.COLORS.BG_DARK,
                 borderBottom: `4px solid ${CONFIG.COLORS.PINK}`,
@@ -614,8 +620,8 @@ export default function App() {
                 ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
                 style={{ 
-                    // MODIF: 130px de hauteur de base + safe area
-                    height: isDrawerExpanded ? '85%' : '130px', 
+                    // MODIF: 135px de hauteur de base + safe area
+                    height: isDrawerExpanded ? '85%' : '135px', 
                     touchAction: 'none',
                     zIndex: 2000,
                     // MODIF: Padding-bottom safe area pour PWA
@@ -639,11 +645,12 @@ export default function App() {
                     onTouchEnd={handleTouchEnd}
                     onClick={toggleDrawer}
                 >
+                    {/* Chevron animé */}
                     {!isDrawerExpanded ? <ChevronUp size={14} className="animate-bounce text-[#facc15]" /> : <ChevronDown size={14} />}
                     {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques référencées`}
                 </div>
 
-                {/* BLOC D'APPEL À L'ACTION */}
+                {/* BLOC D'APPEL À L'ACTION TOUJOURS VISIBLE EN HAUT DU CONTENU */}
                 <div className="px-4 pb-2 select-none pointer-events-auto">
                      <div className="text-center p-3 bg-[#1e1e2e]/80 rounded-xl border border-gray-700/50 backdrop-blur-sm">
                         <p className="text-[10px] text-gray-400 mb-1">
@@ -828,10 +835,10 @@ export default function App() {
           {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* MODIF : Remonté à 140px + safe area */
-                        bottom-[calc(140px+env(safe-area-inset-bottom))] left-4 right-[66px] 
+                        /* MODIF : Remonté à 145px pour matcher le tiroir réduit de 135px */
+                        bottom-[calc(145px+env(safe-area-inset-bottom))] left-4 right-[66px] 
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
-                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
+                        bg-[#11111b]/95 backdrop-blur border-t-4 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: CONFIG.COLORS.PINK }}>
                <button 
                 onClick={() => {setSelectedShop(null); if(mapInstanceRef.current) mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });}}
@@ -893,7 +900,7 @@ export default function App() {
               <X size={24} />
             </button>
 
-            <h2 className={`font-pixel text-[${CONFIG.COLORS.YELLOW}] text-xs mb-6 text-center border-b border-gray-700 pb-4`} style={{ color: CONFIG.COLORS.YELLOW }}>
+            <h2 className={`font-pixel text-xs mb-6 text-center border-b border-gray-700 pb-4`} style={{ color: CONFIG.COLORS.YELLOW }}>
               Let's go hunt !
             </h2>
 
@@ -988,7 +995,7 @@ export default function App() {
                 <div>
                   <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
                   <textarea 
-                    className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm`}
+                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm"
                     style={{ borderColor: '#374151' }}
                     onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                     onBlur={(e) => e.target.style.borderColor = '#374151'}
