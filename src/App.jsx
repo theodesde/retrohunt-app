@@ -33,7 +33,7 @@ const AVAILABLE_TAGS = [
   "Rétrogaming", "Next Gen", "Import Japon", "Arcade", "Figurines", "Réparations", "Goodies"
 ];
 
-// CORRECTION DÉFINITIVE : Fonction de sécurité standard
+// Fonction de sécurité standard
 const escapeHtml = (unsafe) => {
   if (!unsafe) return "";
   const map = {
@@ -67,6 +67,8 @@ export default function App() {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef({});
+  
+  // Refs pour la gestion du Swipe fluide
   const drawerRef = useRef(null);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
@@ -230,7 +232,7 @@ export default function App() {
     if (!window.L || mapInstanceRef.current) return;
     
     const map = window.L.map(mapRef.current, {
-        zoomControl: false 
+        zoomControl: false
     }).setView(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom);
     
     mapInstanceRef.current = map;
@@ -245,6 +247,7 @@ export default function App() {
     updateMarkers(map);
   }, [updateMarkers]);
 
+  // Initialisation Leaflet
   useEffect(() => {
     if (window.L) {
       initMap();
@@ -295,6 +298,9 @@ export default function App() {
     return () => clearTimeout(timeoutId);
   }, [isLoading]);
 
+
+  // --- 3. LOGIQUE MÉTIER ---
+
   const filteredShops = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return shops.filter(shop => 
@@ -342,9 +348,14 @@ export default function App() {
       });
   };
 
+  // MODIF 1 : Ouverture du tiroir au clic sur un tag
   const searchByTag = (e, tag) => {
     e?.stopPropagation();
-    setSearchTerm(prev => prev === tag ? "" : tag);
+    setSearchTerm(prev => {
+        const newVal = prev === tag ? "" : tag;
+        if (newVal !== "") setIsDrawerExpanded(true); // Ouvre le tiroir si on active un tag
+        return newVal;
+    });
   };
 
   const handleTouchStart = (e) => {
@@ -394,6 +405,8 @@ export default function App() {
     }
     setIsDrawerExpanded(!isDrawerExpanded);
   };
+
+  // --- 4. RENDU ---
 
   return (
     <div className="flex flex-col h-screen text-gray-100 font-sans overflow-hidden relative" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
@@ -545,6 +558,7 @@ export default function App() {
         {/* --- MOBILE UI OVERLAY (Recherche + Drawer) --- */}
         <div className="md:hidden absolute inset-0 z-20 pointer-events-none flex flex-col justify-between">
             
+            {/* 1. BARRE DE RECHERCHE FLOTTANTE */}
             <div className="p-4 pointer-events-auto mt-2">
                 <div className="relative shadow-lg rounded-full overflow-hidden">
                   <Search className="absolute left-4 top-3 text-gray-400" size={18} />
@@ -556,7 +570,13 @@ export default function App() {
                         backgroundColor: 'rgba(24, 24, 37, 0.95)',
                     }}
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        // Ouvre le tiroir si on tape
+                        if(e.target.value.trim() !== '' && !isDrawerExpanded) {
+                            setIsDrawerExpanded(true);
+                        }
+                    }}
                   />
                   {searchTerm && (
                     <button onClick={() => setSearchTerm('')} className="absolute right-4 top-3 text-gray-500 hover:text-white">
@@ -565,6 +585,7 @@ export default function App() {
                   )}
                 </div>
                 
+                {/* Tags de filtre */}
                 <div className="flex gap-2 mt-3 overflow-x-auto pb-2 hide-scrollbar px-1">
                     {AVAILABLE_TAGS.map(tag => (
                         <button
@@ -583,16 +604,17 @@ export default function App() {
                 </div>
             </div>
 
-            {/* 2. TIROIR (DRAWER) EN BAS */}
+            {/* 2. TIROIR (DRAWER) EN BAS AVEC SWIPE */}
             <div 
                 ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
                 style={{ 
-                    height: isDrawerExpanded ? '80%' : '160px',
-                    touchAction: 'none'
+                    height: isDrawerExpanded ? '85%' : '160px',
+                    touchAction: 'none',
+                    zIndex: 2000
                 }}
             >
-                {/* Poignée du tiroir */}
+                {/* Poignée du tiroir (Zone de swipe) */}
                 <div 
                     className="w-full flex justify-center items-center p-2 cursor-pointer hover:bg-white/5 rounded-t-3xl pt-3 select-none"
                     onTouchStart={handleTouchStart}
@@ -602,16 +624,17 @@ export default function App() {
                 >
                     <div className="w-10 h-1 bg-gray-500 rounded-full mb-1"></div>
                 </div>
-                <div className="text-center text-[10px] text-gray-500 font-pixel mb-3 uppercase tracking-wider select-none" 
-                     onTouchStart={handleTouchStart}
-                     onTouchMove={handleTouchMove}
-                     onTouchEnd={handleTouchEnd}
-                     onClick={toggleDrawer}
+                <div 
+                    className="text-center text-[10px] text-gray-500 font-pixel mb-3 uppercase tracking-wider select-none" 
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onClick={toggleDrawer}
                 >
-                    {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques à proximité`}
+                    {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques référencées`}
                 </div>
 
-                {/* BLOC D'APPEL À L'ACTION TOUJOURS VISIBLE (Sorti du scroll) */}
+                {/* BLOC D'APPEL À L'ACTION TOUJOURS VISIBLE EN HAUT DU CONTENU */}
                 <div className="px-4 pb-2 select-none pointer-events-auto">
                      <div className="text-center p-3 bg-[#1e1e2e]/80 rounded-xl border border-gray-700/50 backdrop-blur-sm">
                         <p className="text-[10px] text-gray-400 mb-1">
@@ -661,6 +684,7 @@ export default function App() {
             </div>
         </div>
 
+
         {/* --- DESKTOP SIDEBAR --- */}
         <div className={`
           hidden md:flex z-10 bg-[#181825]/95 backdrop-blur-md 
@@ -669,7 +693,6 @@ export default function App() {
           h-full
           ${isSidebarOpen ? 'w-80' : 'w-0'}
         `}>
-          {/* ... (Contenu desktop inchangé) ... */}
           <div className="p-4 border-b border-gray-700 flex flex-col gap-3 shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
@@ -761,41 +784,47 @@ export default function App() {
         <div className="flex-1 relative bg-[#0f0f15] h-full overflow-hidden">
           <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1]" />
           
-          {/* CONTROLES GOOGLE MAPS STYLE */}
-          <div className="custom-map-controls pointer-events-auto">
-             <button 
-                className="reset-view-btn"
-                onClick={resetMapToDefault}
-                title="Vue globale"
-             >
-                <Globe size={20} />
-             </button>
-             
-             <div className="zoom-buttons">
+          {/* --- MODIF 3 : CONTROLES GOOGLE MAPS MASQUÉS SI NÉCESSAIRE --- */}
+          {(!isModalOpen && !(isDrawerExpanded && window.innerWidth < 768)) && (
+              <div className="custom-map-controls pointer-events-auto">
                  <button 
-                    className="zoom-btn"
-                    onClick={handleZoomIn}
-                    title="Zoom avant"
+                    className="reset-view-btn"
+                    onClick={resetMapToDefault}
+                    title="Vue globale"
                  >
-                    <Plus size={20} />
+                    <Globe size={20} />
                  </button>
                  
-                 <button 
-                    className="zoom-btn"
-                    onClick={handleZoomOut}
-                    title="Zoom arrière"
-                 >
-                    <Minus size={20} />
-                 </button>
-             </div>
-          </div>
+                 <div className="zoom-buttons">
+                     <button 
+                        className="zoom-btn"
+                        onClick={handleZoomIn}
+                        title="Zoom avant"
+                     >
+                        <Plus size={20} />
+                     </button>
+                     
+                     <button 
+                        className="zoom-btn"
+                        onClick={handleZoomOut}
+                        title="Zoom arrière"
+                     >
+                        <Minus size={20} />
+                     </button>
+                 </div>
+              </div>
+          )}
 
           {/* --- INFO PANEL (Tuile) --- */}
+          {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
+                        /* Position mobile: au dessus du drawer réduit + marge droite */
                         bottom-[170px] left-4 right-[66px] 
+                        /* Position desktop: ancré en bas à droite avec largeur fixe */
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
-                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-3xl md:rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
+                        /* MODIF 2: arrondi homogène */
+                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: '#d8b4fe' }}>
                <button 
                 onClick={() => {setSelectedShop(null); if(mapInstanceRef.current) mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });}}
@@ -849,15 +878,15 @@ export default function App() {
       {/* --- MODAL DE PROPOSITION --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#181825] border-2 w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8" style={{ borderColor: CONFIG.COLORS.YELLOW }}>
+          <div className={`bg-[#181825] border-2 border-[${CONFIG.COLORS.YELLOW}] w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8`}>
             <button 
               onClick={() => setIsModalOpen(false)}
-              className="absolute top-3 right-3 text-gray-500 hover:text-white"
+              className={`absolute top-3 right-3 text-gray-500 hover:text-[${CONFIG.COLORS.YELLOW}]`}
             >
               <X size={24} />
             </button>
 
-            <h2 className="font-pixel text-xs mb-6 text-center border-b border-gray-700 pb-4" style={{ color: CONFIG.COLORS.YELLOW }}>
+            <h2 className={`font-pixel text-[${CONFIG.COLORS.YELLOW}] text-xs mb-6 text-center border-b border-gray-700 pb-4`}>
               Let's go hunt !
             </h2>
 
@@ -882,10 +911,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
-                      style={{ borderColor: '#374151' }}
-                      onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
-                      onBlur={(e) => e.target.style.borderColor = '#374151'}
+                      className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors text-sm`}
                       placeholder="Ex: Super Potato"
                       value={newShopForm.name}
                       onChange={e => setNewShopForm({...newShopForm, name: e.target.value})}
@@ -896,10 +922,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
-                      style={{ borderColor: '#374151' }}
-                      onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
-                      onBlur={(e) => e.target.style.borderColor = '#374151'}
+                      className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors text-sm`}
                       placeholder="Ex: Tokyo, Japon"
                       value={newShopForm.city}
                       onChange={e => setNewShopForm({...newShopForm, city: e.target.value})}
@@ -912,10 +935,7 @@ export default function App() {
                   <input 
                     required
                     type="text" 
-                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
-                    style={{ borderColor: '#374151' }}
-                    onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
-                    onBlur={(e) => e.target.style.borderColor = '#374151'}
+                    className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors text-sm`}
                     placeholder="Ex: 1 Chome-11-2 Sotokanda, Chiyoda City"
                     value={newShopForm.address}
                     onChange={e => setNewShopForm({...newShopForm, address: e.target.value})}
@@ -932,13 +952,12 @@ export default function App() {
                         key={tag}
                         type="button"
                         onClick={() => toggleTag(tag)}
-                        className="text-[10px] px-2 py-1 rounded border transition-all font-medium"
-                        style={{ 
-                            backgroundColor: newShopForm.tags.includes(tag) ? CONFIG.COLORS.YELLOW : '#181825',
-                            color: newShopForm.tags.includes(tag) ? 'black' : '#9ca3af',
-                            borderColor: newShopForm.tags.includes(tag) ? CONFIG.COLORS.YELLOW : '#4b5563',
-                            boxShadow: newShopForm.tags.includes(tag) ? `0 0 10px ${CONFIG.COLORS.YELLOW}4D` : 'none'
-                        }}
+                        className={`
+                          text-[10px] px-2 py-1 rounded border transition-all font-medium
+                          ${newShopForm.tags.includes(tag) 
+                            ? `bg-[${CONFIG.COLORS.YELLOW}] text-black border-[${CONFIG.COLORS.YELLOW}] shadow-[0_0_10px_rgba(250,204,21,0.3)]` 
+                            : 'bg-[#181825] text-gray-400 border-gray-600 hover:border-gray-400'}
+                        `}
                       >
                         {tag}
                       </button>
@@ -952,10 +971,7 @@ export default function App() {
                 <div>
                   <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
                   <textarea 
-                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm"
-                    style={{ borderColor: '#374151' }}
-                    onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
-                    onBlur={(e) => e.target.style.borderColor = '#374151'}
+                    className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors h-20 resize-none text-sm`}
                     placeholder="Pourquoi cette boutique est top ? Horaires spécifiques ? Anecdote ?"
                     value={newShopForm.note}
                     onChange={e => setNewShopForm({...newShopForm, note: e.target.value})}
@@ -965,8 +981,7 @@ export default function App() {
                 <button 
                   disabled={submitStatus === 'loading'}
                   type="submit" 
-                  className={`w-full text-black font-pixel text-[10px] py-4 transition-colors uppercase disabled:opacity-50 disabled:cursor-wait shadow-[0_4px_0_#b45309] active:shadow-none active:translate-y-1 ${submitStatus === 'loading' ? 'cursor-wait' : ''}`}
-                  style={{ backgroundColor: CONFIG.COLORS.YELLOW }}
+                  className={`w-full bg-[${CONFIG.COLORS.YELLOW}] text-black font-pixel text-[10px] py-4 hover:bg-yellow-300 transition-colors uppercase disabled:opacity-50 disabled:cursor-wait shadow-[0_4px_0_#b45309] active:shadow-none active:translate-y-1 ${submitStatus === 'loading' ? 'cursor-wait' : ''}`}
                 >
                   {submitStatus === 'loading' ? 'ENVOI EN COURS...' : 'ENVOYER LA PROPOSITION'}
                 </button>
