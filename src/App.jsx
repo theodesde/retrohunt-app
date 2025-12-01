@@ -120,17 +120,7 @@ export default function App() {
     return () => { isMounted = false; };
   }, []);
 
-  // --- 2. LOGIQUE DE FILTRAGE (PLACÉE AVANT LES MARKERS) ---
-  const filteredShops = useMemo(() => {
-    const term = searchTerm.toLowerCase();
-    return shops.filter(shop => 
-      shop.name.toLowerCase().includes(term) ||
-      shop.city.toLowerCase().includes(term) ||
-      (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
-    );
-  }, [shops, searchTerm]);
-
-  // --- 3. GESTION DE LA CARTE ---
+  // --- 2. GESTION DE LA CARTE ---
   
   const flyToShopWithOffset = useCallback((shop) => {
     if (!mapInstanceRef.current || !shop.lat || !shop.lng) return;
@@ -184,7 +174,6 @@ export default function App() {
     }
   }, []);
 
-  // MISE À JOUR DES MARQUEURS (Basé sur filteredShops)
   const updateMarkers = useCallback((map) => {
     if (!window.L) return;
 
@@ -205,8 +194,7 @@ export default function App() {
     Object.values(markersRef.current).forEach(marker => map.removeLayer(marker));
     markersRef.current = {};
 
-    // Utilisation de filteredShops pour ne montrer que les résultats de la recherche
-    filteredShops.forEach(shop => {
+    shops.forEach(shop => {
       if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
         const safeName = escapeHtml(shop.name);
         const safeCity = escapeHtml(shop.city);
@@ -240,7 +228,7 @@ export default function App() {
         markersRef.current[shop.id] = marker;
       }
     });
-  }, [filteredShops, flyToShop, selectedShop]);
+  }, [shops, flyToShop, selectedShop]);
 
   const initMap = useCallback(() => {
     if (!window.L || mapInstanceRef.current) return;
@@ -286,12 +274,11 @@ export default function App() {
     };
   }, [initMap]);
 
-  // Mise à jour des marqueurs quand le filtre change
   useEffect(() => {
     if (mapInstanceRef.current && window.L) {
         updateMarkers(mapInstanceRef.current);
     }
-  }, [filteredShops, updateMarkers]);
+  }, [shops, updateMarkers]);
 
   useEffect(() => {
     let timeoutId;
@@ -314,7 +301,16 @@ export default function App() {
   }, [isLoading]);
 
 
-  // --- 4. AUTRES FONCTIONS MÉTIER ---
+  // --- 3. LOGIQUE MÉTIER ---
+
+  const filteredShops = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return shops.filter(shop => 
+      shop.name.toLowerCase().includes(term) ||
+      shop.city.toLowerCase().includes(term) ||
+      (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
+    );
+  }, [shops, searchTerm]);
 
   const toggleTag = (tag) => {
     setNewShopForm(prev => {
@@ -416,10 +412,11 @@ export default function App() {
     setIsDrawerExpanded(!isDrawerExpanded);
   };
 
-  // --- 5. RENDU ---
+  // --- 4. RENDU ---
 
   return (
-    <div className="flex flex-col h-screen text-gray-100 font-sans overflow-hidden relative" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
+    // MODIF : h-[100dvh] pour la hauteur dynamique mobile et overscroll-none pour bloquer le scroll body
+    <div className="flex flex-col h-[100dvh] w-full text-gray-100 font-sans overflow-hidden relative overscroll-none" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Press+Start+2P&display=swap');
         .font-pixel { font-family: 'Press Start 2P', cursive; }
@@ -507,7 +504,7 @@ export default function App() {
       `}</style>
 
       {/* --- HEADER (Fixe) --- */}
-      <header className="h-16 flex items-center justify-between px-4 z-30 shrink-0 relative"
+      <header className="h-16 flex items-center justify-between px-4 z-50 shrink-0 sticky top-0"
               style={{ 
                 backgroundColor: CONFIG.COLORS.BG_DARK,
                 borderBottom: `4px solid ${CONFIG.COLORS.PINK}`,
@@ -566,7 +563,6 @@ export default function App() {
       <div className="flex-1 relative overflow-hidden flex md:flex-row">
         
         {/* --- MOBILE UI OVERLAY (Recherche + Drawer) --- */}
-        {/* MODIF: z-[2000] pour passer au-dessus des boutons de la carte */}
         <div className="md:hidden absolute inset-0 z-[2000] pointer-events-none flex flex-col justify-between">
             
             {/* 1. BARRE DE RECHERCHE FLOTTANTE */}
@@ -643,7 +639,7 @@ export default function App() {
                     {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques référencées`}
                 </div>
 
-                {/* BLOC D'APPEL À L'ACTION */}
+                {/* BLOC D'APPEL À L'ACTION TOUJOURS VISIBLE EN HAUT DU CONTENU */}
                 <div className="px-4 pb-2 select-none pointer-events-auto">
                      <div className="text-center p-3 bg-[#1e1e2e]/80 rounded-xl border border-gray-700/50 backdrop-blur-sm">
                         <p className="text-[10px] text-gray-400 mb-1">
@@ -694,7 +690,7 @@ export default function App() {
         </div>
 
 
-        {/* --- DESKTOP SIDEBAR (Inchangée) --- */}
+        {/* --- DESKTOP SIDEBAR --- */}
         <div className={`
           hidden md:flex z-10 bg-[#181825]/95 backdrop-blur-md 
           border-r border-gray-800 
@@ -825,7 +821,6 @@ export default function App() {
           )}
 
           {/* --- INFO PANEL (Tuile) --- */}
-          {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
                         bottom-[185px] left-4 right-[66px] 
@@ -917,7 +912,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
+                      className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm`}
                       style={{ borderColor: '#374151' }}
                       onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                       onBlur={(e) => e.target.style.borderColor = '#374151'}
@@ -931,7 +926,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
+                      className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm`}
                       style={{ borderColor: '#374151' }}
                       onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                       onBlur={(e) => e.target.style.borderColor = '#374151'}
@@ -947,7 +942,7 @@ export default function App() {
                   <input 
                     required
                     type="text" 
-                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
+                    className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm`}
                     style={{ borderColor: '#374151' }}
                     onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                     onBlur={(e) => e.target.style.borderColor = '#374151'}
