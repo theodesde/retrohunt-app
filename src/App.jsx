@@ -33,6 +33,7 @@ const AVAILABLE_TAGS = [
   "Rétrogaming", "Next Gen", "Import Japon", "Arcade", "Figurines", "Réparations", "Goodies"
 ];
 
+// CORRECTION DÉFINITIVE : Fonction de sécurité standard
 const escapeHtml = (unsafe) => {
   if (!unsafe) return "";
   const map = {
@@ -53,10 +54,10 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedShop, setSelectedShop] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true); 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Desktop: sidebar visible?
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  // État logique du tiroir (Ouvert/Fermé)
+  // État pour le tiroir mobile (Drawer)
   const [isDrawerExpanded, setIsDrawerExpanded] = useState(false);
 
   const [newShopForm, setNewShopForm] = useState({ 
@@ -121,6 +122,27 @@ export default function App() {
 
   // --- 2. GESTION DE LA CARTE ---
   
+  const flyToShopWithOffset = useCallback((shop) => {
+    if (!mapInstanceRef.current || !shop.lat || !shop.lng) return;
+
+    const map = mapInstanceRef.current;
+    const targetZoom = 15; 
+
+    if (window.innerWidth < 768) {
+        const point = map.project([shop.lat, shop.lng], targetZoom);
+        point.y = point.y + 150; 
+        const targetLatLng = map.unproject(point, targetZoom);
+        
+        map.flyTo(targetLatLng, targetZoom, { duration: 1.5 });
+    } else {
+        map.flyTo([shop.lat, shop.lng], targetZoom, { duration: 1.5 });
+    }
+
+    const marker = markersRef.current[shop.id];
+    if (marker) marker.openPopup();
+
+  }, []);
+
   const flyToShop = useCallback((shop) => {
     if (selectedShop && selectedShop.id === shop.id) {
         setSelectedShop(null);
@@ -129,14 +151,9 @@ export default function App() {
         if (window.innerWidth < 768) {
             setIsDrawerExpanded(false);
         }
-        
-        if (mapInstanceRef.current && shop.lat && shop.lng) {
-            mapInstanceRef.current.flyTo([shop.lat, shop.lng], 13, { duration: 1.5 });
-            const marker = markersRef.current[shop.id];
-            if (marker) marker.openPopup();
-        }
+        flyToShopWithOffset(shop);
     }
-  }, [selectedShop]);
+  }, [selectedShop, flyToShopWithOffset]);
 
   const resetMapToDefault = useCallback(() => {
     if (mapInstanceRef.current) {
@@ -338,15 +355,10 @@ export default function App() {
     setSearchTerm(prev => prev === tag ? "" : tag);
   };
 
-  // --- GESTION DU SWIPE FLUIDE ---
-
   const handleTouchStart = (e) => {
-    // On ne capture le swipe que si on touche le header du tiroir
-    // ou si le tiroir est en haut et qu'on scroll vers le bas
     isDragging.current = true;
     dragStartY.current = e.touches[0].clientY;
     
-    // On désactive la transition pour que le mouvement suive le doigt instantanément
     if (drawerRef.current) {
         drawerRef.current.style.transition = 'none';
         dragStartHeight.current = drawerRef.current.getBoundingClientRect().height;
@@ -357,10 +369,9 @@ export default function App() {
     if (!isDragging.current || !drawerRef.current) return;
 
     const currentY = e.touches[0].clientY;
-    const deltaY = dragStartY.current - currentY; // Positif si on monte
+    const deltaY = dragStartY.current - currentY;
     const newHeight = dragStartHeight.current + deltaY;
     
-    // Limites (Min: 160px, Max: 85% de l'écran)
     const maxHeight = window.innerHeight * 0.85;
     if (newHeight >= 160 && newHeight <= maxHeight) {
         drawerRef.current.style.height = `${newHeight}px`;
@@ -371,20 +382,17 @@ export default function App() {
     if (!isDragging.current || !drawerRef.current) return;
     isDragging.current = false;
 
-    // On réactive la transition pour le "snap" final
     drawerRef.current.style.transition = 'height 0.3s ease-out';
 
     const currentHeight = drawerRef.current.getBoundingClientRect().height;
-    const threshold = window.innerHeight * 0.5; // Seuil à 50% de l'écran
+    const threshold = window.innerHeight * 0.5; 
 
     if (currentHeight > threshold) {
         setIsDrawerExpanded(true);
-        // Le style inline sera écrasé par le state React au prochain render, 
-        // mais on force le style pour l'animation immédiate
         drawerRef.current.style.height = '85%'; 
     } else {
         setIsDrawerExpanded(false);
-        drawerRef.current.style.height = '160px';
+        drawerRef.current.style.height = '180px'; // Ajusté pour accueillir le message
     }
   };
 
@@ -419,7 +427,6 @@ export default function App() {
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .cursor-wait { cursor: wait; }
         
-        /* Styles pour les contrôles de map custom */
         .custom-map-controls {
             position: absolute;
             bottom: 24px;
@@ -476,14 +483,11 @@ export default function App() {
         .zoom-btn:last-child {
             border-bottom: none;
         }
-        .zoom-btn:hover {
-            background-color: #f3f3f3;
-            color: #333333;
-        }
+        .zoom-btn:hover { background-color: #f3f3f3; color: #333333; }
 
         @media (max-width: 768px) {
             .custom-map-controls {
-                bottom: 180px !important; 
+                bottom: 190px !important; 
                 right: 10px;
             }
         }
@@ -596,8 +600,8 @@ export default function App() {
                 ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
                 style={{ 
-                    height: isDrawerExpanded ? '85%' : '160px',
-                    touchAction: 'none' // IMPORTANT pour le drag
+                    height: isDrawerExpanded ? '85%' : '180px', // Hauteur ajustée pour le message
+                    touchAction: 'none'
                 }}
             >
                 {/* Poignée du tiroir (Zone de swipe) */}
@@ -606,7 +610,7 @@ export default function App() {
                     onTouchStart={handleTouchStart}
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
-                    onClick={toggleDrawer} // Click fallback
+                    onClick={toggleDrawer}
                 >
                     <div className="w-10 h-1 bg-gray-500 rounded-full mb-1"></div>
                 </div>
@@ -617,11 +621,27 @@ export default function App() {
                     onTouchEnd={handleTouchEnd}
                     onClick={toggleDrawer}
                 >
-                    {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques à proximité`}
+                    {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques référencées`}
                 </div>
 
-                {/* Contenu du tiroir */}
-                <div className="flex-1 overflow-y-auto p-4 pt-0 space-y-3 pb-8">
+                {/* BLOC D'APPEL À L'ACTION TOUJOURS VISIBLE EN HAUT DU CONTENU */}
+                <div className="px-4 pb-2 select-none pointer-events-auto">
+                     <div className="text-center p-3 bg-[#1e1e2e]/80 rounded-xl border border-gray-700/50 backdrop-blur-sm">
+                        <p className="text-[10px] text-gray-400 mb-1">
+                            Tu connais une adresse qui manque ?
+                        </p>
+                        <button 
+                            onClick={() => setIsModalOpen(true)}
+                            className="text-[10px] font-pixel font-bold text-[#facc15] hover:underline flex items-center justify-center gap-1 mx-auto"
+                        >
+                            <Plus size={10} /> AJOUTER UN SHOP
+                        </button>
+                     </div>
+                </div>
+
+                {/* Contenu du tiroir (Liste défilable) */}
+                {/* Le contenu reste masqué si le tiroir n'est pas étendu, sauf le bloc ci-dessus */}
+                <div className={`flex-1 overflow-y-auto p-4 pt-0 space-y-3 pb-8 ${!isDrawerExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'} transition-opacity duration-200`}>
                     {filteredShops.map(shop => (
                         <div 
                             key={shop.id}
@@ -656,7 +676,7 @@ export default function App() {
         </div>
 
 
-        {/* --- DESKTOP SIDEBAR (Inchangée) --- */}
+        {/* --- DESKTOP SIDEBAR --- */}
         <div className={`
           hidden md:flex z-10 bg-[#181825]/95 backdrop-blur-md 
           border-r border-gray-800 
@@ -665,8 +685,7 @@ export default function App() {
           ${isSidebarOpen ? 'w-80' : 'w-0'}
         `}>
           <div className="p-4 border-b border-gray-700 flex flex-col gap-3 shrink-0">
-            {/* ... Search desktop ... */}
-             <div className="relative">
+            <div className="relative">
               <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
               <input 
                 type="text" 
@@ -786,14 +805,11 @@ export default function App() {
           </div>
 
           {/* --- INFO PANEL (Tuile) --- */}
-          {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* Position mobile: Au dessus du tiroir, avec marges */
                         bottom-[170px] left-4 right-[66px] 
-                        /* Position desktop: ancré en bas à droite */
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
-                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-3xl md:rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
+                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: '#d8b4fe' }}>
                <button 
                 onClick={() => {setSelectedShop(null); if(mapInstanceRef.current) mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });}}
@@ -844,7 +860,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* --- MODAL DE PROPOSITION (Inchangée) --- */}
+      {/* --- MODAL DE PROPOSITION --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className={`bg-[#181825] border-2 border-[${CONFIG.COLORS.YELLOW}] w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8`}>
