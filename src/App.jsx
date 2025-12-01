@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { MapPin, Gamepad2, Search, Plus, X, ExternalLink, Menu, Tag, Instagram, Loader2, Crown, ChevronUp, ChevronDown, Globe, Minus } from 'lucide-react';
+import { MapPin, Gamepad2, Search, Plus, X, ExternalLink, Menu, Tag, Instagram, Loader2, Crown, ChevronUp, ChevronDown, Globe, Minus, RefreshCw } from 'lucide-react';
 import emailjs from '@emailjs/browser';
 import Papa from 'papaparse';
 
@@ -118,7 +118,18 @@ export default function App() {
     return () => { isMounted = false; };
   }, []);
 
-  // --- 2. GESTION DE LA CARTE ---
+  // --- 2. LOGIQUE DE FILTRAGE ---
+  const filteredShops = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return shops.filter(shop => 
+      shop.name.toLowerCase().includes(term) ||
+      shop.city.toLowerCase().includes(term) ||
+      (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
+    );
+  }, [shops, searchTerm]);
+
+
+  // --- 3. GESTION DE LA CARTE ---
   
   const flyToShopWithOffset = useCallback((shop) => {
     if (!mapInstanceRef.current || !shop.lat || !shop.lng) return;
@@ -128,7 +139,7 @@ export default function App() {
 
     if (window.innerWidth < 768) {
         const point = map.project([shop.lat, shop.lng], targetZoom);
-        // Offset maintenu à 80px pour le tiroir de 135px
+        // Offset ajusté pour le tiroir
         point.y = point.y + 80; 
         const targetLatLng = map.unproject(point, targetZoom);
         
@@ -173,7 +184,8 @@ export default function App() {
     }
   }, []);
 
-  const updateMarkers = useCallback((map) => {
+  // FONCTION DE RENDU DES MARQUEURS
+  const renderMarkers = useCallback((mapInstance, shopsToRender) => {
     if (!window.L) return;
 
     const retroIcon = window.L.divIcon({
@@ -190,10 +202,12 @@ export default function App() {
       iconAnchor: [9, 9]
     });
 
-    Object.values(markersRef.current).forEach(marker => map.removeLayer(marker));
+    // Nettoyage
+    Object.values(markersRef.current).forEach(marker => mapInstance.removeLayer(marker));
     markersRef.current = {};
 
-    shops.forEach(shop => {
+    // Rendu de la liste filtrée
+    shopsToRender.forEach(shop => {
       if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
         const safeName = escapeHtml(shop.name);
         const safeCity = escapeHtml(shop.city);
@@ -213,7 +227,7 @@ export default function App() {
             icon: isSelected ? yellowIcon : retroIcon,
             zIndexOffset: isSelected ? 1000 : 0 
         })
-          .addTo(map)
+          .addTo(mapInstance)
           .bindPopup(popupContent);
         
         if (isSelected) {
@@ -227,7 +241,8 @@ export default function App() {
         markersRef.current[shop.id] = marker;
       }
     });
-  }, [shops, flyToShop, selectedShop]);
+  }, [selectedShop, flyToShop]);
+
 
   const initMap = useCallback(() => {
     if (!window.L || mapInstanceRef.current) return;
@@ -244,9 +259,7 @@ export default function App() {
       maxZoom: 19,
       updateWhenZooming: false 
     }).addTo(map);
-
-    updateMarkers(map);
-  }, [updateMarkers]);
+  }, []);
 
   // Initialisation Leaflet
   useEffect(() => {
@@ -273,11 +286,12 @@ export default function App() {
     };
   }, [initMap]);
 
+  // CORRECTION FILTRE LIVE
   useEffect(() => {
     if (mapInstanceRef.current && window.L) {
-        updateMarkers(mapInstanceRef.current);
+        renderMarkers(mapInstanceRef.current, filteredShops);
     }
-  }, [shops, updateMarkers]);
+  }, [filteredShops, renderMarkers]);
 
   useEffect(() => {
     let timeoutId;
@@ -289,6 +303,7 @@ export default function App() {
     return () => clearTimeout(timeoutId);
   }, [isSidebarOpen, isDrawerExpanded]);
 
+  // Centrage initial
   useEffect(() => {
     let timeoutId;
     if (!mapInstanceRef.current || isLoading || shops.length === 0 || !window.L) return;
@@ -298,18 +313,6 @@ export default function App() {
     }
     return () => clearTimeout(timeoutId);
   }, [isLoading]);
-
-
-  // --- 3. LOGIQUE MÉTIER ---
-
-  const filteredShops = useMemo(() => {
-    const term = searchTerm.toLowerCase();
-    return shops.filter(shop => 
-      shop.name.toLowerCase().includes(term) ||
-      shop.city.toLowerCase().includes(term) ||
-      (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
-    );
-  }, [shops, searchTerm]);
 
   const toggleTag = (tag) => {
     setNewShopForm(prev => {
@@ -354,6 +357,7 @@ export default function App() {
     setSearchTerm(prev => prev === tag ? "" : tag);
   };
 
+  // --- GESTION DU SWIPE FLUIDE ---
   const handleTouchStart = (e) => {
     isDragging.current = true;
     dragStartY.current = e.touches[0].clientY;
@@ -409,11 +413,14 @@ export default function App() {
     }
     setIsDrawerExpanded(!isDrawerExpanded);
   };
+  
+  const handleReloadApp = () => {
+      window.location.reload();
+  };
 
   // --- 5. RENDU ---
 
   return (
-    // MODIF : absolute inset-0 + fix global pour PWA
     <div className="absolute inset-0 flex flex-col text-gray-100 font-sans overflow-hidden overscroll-none" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Press+Start+2P&display=swap');
@@ -423,12 +430,11 @@ export default function App() {
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: ${CONFIG.COLORS.PINK}; }
         
-        /* RESET GLOBAL PWA */
         html, body, #root {
           height: 100%;
           width: 100%;
           overflow: hidden;
-          position: fixed; /* Empêche le bounce iOS */
+          position: fixed;
         }
 
         .scanlines {
@@ -461,7 +467,8 @@ export default function App() {
             background-color: white;
             color: #666666;
             border: none;
-            border-radius: 8px;
+            /* MODIF: Arrondi cohérent */
+            border-radius: 12px; 
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             display: flex;
             align-items: center;
@@ -478,7 +485,8 @@ export default function App() {
             display: flex;
             flex-direction: column;
             background: white;
-            border-radius: 8px;
+            /* MODIF: Arrondi cohérent */
+            border-radius: 12px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             overflow: hidden;
         }
@@ -504,7 +512,7 @@ export default function App() {
 
         @media (max-width: 768px) {
             .custom-map-controls {
-                /* MODIF : 135 + 10 = 145px + Safe Area */
+                /* 135 + 10 = 145px + Safe Area */
                 bottom: calc(145px + env(safe-area-inset-bottom)) !important;
                 right: 10px;
             }
@@ -527,6 +535,7 @@ export default function App() {
             {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
           
+          {/* RETOUR DU JOYSTICK */}
           <div className="text-2xl animate-bounce">🕹️</div>
           <div className="flex flex-col justify-center">
             <div className="flex items-center gap-2">
@@ -544,27 +553,35 @@ export default function App() {
           </div>
         </div>
 
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="bg-transparent border-2 hover:text-black transition-all px-3 py-2 font-pixel text-[8px] md:text-[10px] flex items-center gap-2"
-          style={{ 
-            borderColor: CONFIG.COLORS.YELLOW, 
-            color: CONFIG.COLORS.YELLOW,
-            boxShadow: `0 0 15px ${CONFIG.COLORS.YELLOW}`
-          }}
-          onMouseEnter={(e) => {
-             e.currentTarget.style.backgroundColor = CONFIG.COLORS.YELLOW;
-             e.currentTarget.style.color = 'black';
-          }}
-          onMouseLeave={(e) => {
-             e.currentTarget.style.backgroundColor = 'transparent';
-             e.currentTarget.style.color = CONFIG.COLORS.YELLOW;
-          }}
-        >
-          <Plus size={14} /> 
-          <span className="hidden sm:inline">Ajout shop</span>
-          <span className="sm:hidden">Ajout</span>
-        </button>
+        <div className="flex items-center gap-2">
+            {/* MODIF : BOUTON REFRESH A GAUCHE DU '+' */}
+            <button onClick={handleReloadApp} className="transition-colors hover:text-white p-2" style={{ color: CONFIG.COLORS.PINK }} title="Rafraîchir">
+              <RefreshCw size={20} />
+            </button>
+
+            {/* MODIF : BOUTON AJOUT ARRONDIS + LOGO SEUL SUR MOBILE */}
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              // Ajout de rounded-xl pour l'arrondi
+              className="bg-transparent border-2 hover:text-black transition-all px-3 py-2 font-pixel text-[8px] md:text-[10px] flex items-center gap-2 rounded-xl"
+              style={{ 
+                borderColor: CONFIG.COLORS.YELLOW, 
+                color: CONFIG.COLORS.YELLOW,
+                boxShadow: `0 0 15px ${CONFIG.COLORS.YELLOW}`
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = CONFIG.COLORS.YELLOW;
+                e.currentTarget.style.color = 'black';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = CONFIG.COLORS.YELLOW;
+              }}
+            >
+              <Plus size={14} /> 
+              <span className="hidden sm:inline">Ajout shop</span>
+            </button>
+        </div>
       </header>
 
       {/* --- CONTENEUR PRINCIPAL --- */}
@@ -620,11 +637,9 @@ export default function App() {
                 ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
                 style={{ 
-                    // MODIF: 135px de hauteur de base + safe area
-                    height: isDrawerExpanded ? '85%' : '135px', 
+                    height: isDrawerExpanded ? '85%' : '135px',
                     touchAction: 'none',
                     zIndex: 2000,
-                    // MODIF: Padding-bottom safe area pour PWA
                     paddingBottom: 'env(safe-area-inset-bottom)'
                 }}
             >
@@ -645,7 +660,6 @@ export default function App() {
                     onTouchEnd={handleTouchEnd}
                     onClick={toggleDrawer}
                 >
-                    {/* Chevron animé */}
                     {!isDrawerExpanded ? <ChevronUp size={14} className="animate-bounce text-[#facc15]" /> : <ChevronDown size={14} />}
                     {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques référencées`}
                 </div>
@@ -835,8 +849,8 @@ export default function App() {
           {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* MODIF : Remonté à 145px pour matcher le tiroir réduit de 135px */
-                        bottom-[calc(145px+env(safe-area-inset-bottom))] left-4 right-[66px] 
+                        /* MODIF : Remonté à 140px + safe area */
+                        bottom-[calc(140px+env(safe-area-inset-bottom))] left-4 right-[66px] 
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
                         bg-[#11111b]/95 backdrop-blur border-t-4 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: CONFIG.COLORS.PINK }}>
@@ -900,7 +914,7 @@ export default function App() {
               <X size={24} />
             </button>
 
-            <h2 className={`font-pixel text-xs mb-6 text-center border-b border-gray-700 pb-4`} style={{ color: CONFIG.COLORS.YELLOW }}>
+            <h2 className={`font-pixel text-[${CONFIG.COLORS.YELLOW}] text-xs mb-6 text-center border-b border-gray-700 pb-4`} style={{ color: CONFIG.COLORS.YELLOW }}>
               Let's go hunt !
             </h2>
 
@@ -995,7 +1009,7 @@ export default function App() {
                 <div>
                   <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
                   <textarea 
-                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm"
+                    className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm`}
                     style={{ borderColor: '#374151' }}
                     onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                     onBlur={(e) => e.target.style.borderColor = '#374151'}
