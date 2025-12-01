@@ -67,8 +67,6 @@ export default function App() {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef({});
-  
-  // Refs pour la gestion du Swipe fluide
   const drawerRef = useRef(null);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
@@ -118,7 +116,18 @@ export default function App() {
     return () => { isMounted = false; };
   }, []);
 
-  // --- 2. GESTION DE LA CARTE ---
+  // --- 2. LOGIQUE DE FILTRAGE (DÉPLACÉE ICI POUR ÊTRE ACCESSIBLE PAR LA CARTE) ---
+  const filteredShops = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return shops.filter(shop => 
+      shop.name.toLowerCase().includes(term) ||
+      shop.city.toLowerCase().includes(term) ||
+      (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
+    );
+  }, [shops, searchTerm]);
+
+
+  // --- 3. GESTION DE LA CARTE ---
   
   const flyToShopWithOffset = useCallback((shop) => {
     if (!mapInstanceRef.current || !shop.lat || !shop.lng) return;
@@ -172,6 +181,7 @@ export default function App() {
     }
   }, []);
 
+  // MISE À JOUR DES MARQUEURS (Utilise maintenant filteredShops)
   const updateMarkers = useCallback((map) => {
     if (!window.L) return;
 
@@ -189,10 +199,12 @@ export default function App() {
       iconAnchor: [9, 9]
     });
 
+    // On nettoie TOUS les marqueurs existants
     Object.values(markersRef.current).forEach(marker => map.removeLayer(marker));
     markersRef.current = {};
 
-    shops.forEach(shop => {
+    // On ajoute SEULEMENT les marqueurs de la liste filtrée
+    filteredShops.forEach(shop => {
       if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
         const safeName = escapeHtml(shop.name);
         const safeCity = escapeHtml(shop.city);
@@ -226,7 +238,7 @@ export default function App() {
         markersRef.current[shop.id] = marker;
       }
     });
-  }, [shops, flyToShop, selectedShop]);
+  }, [filteredShops, flyToShop, selectedShop]); // Dépendance à filteredShops
 
   const initMap = useCallback(() => {
     if (!window.L || mapInstanceRef.current) return;
@@ -272,11 +284,12 @@ export default function App() {
     };
   }, [initMap]);
 
+  // Mise à jour des marqueurs quand le filtre change
   useEffect(() => {
     if (mapInstanceRef.current && window.L) {
         updateMarkers(mapInstanceRef.current);
     }
-  }, [shops, updateMarkers]);
+  }, [filteredShops, updateMarkers]); // Écoute les changements de filteredShops
 
   useEffect(() => {
     let timeoutId;
@@ -299,16 +312,7 @@ export default function App() {
   }, [isLoading]);
 
 
-  // --- 3. LOGIQUE MÉTIER ---
-
-  const filteredShops = useMemo(() => {
-    const term = searchTerm.toLowerCase();
-    return shops.filter(shop => 
-      shop.name.toLowerCase().includes(term) ||
-      shop.city.toLowerCase().includes(term) ||
-      (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
-    );
-  }, [shops, searchTerm]);
+  // --- 4. AUTRES FONCTIONS MÉTIER ---
 
   const toggleTag = (tag) => {
     setNewShopForm(prev => {
@@ -350,7 +354,6 @@ export default function App() {
 
   const searchByTag = (e, tag) => {
     e?.stopPropagation();
-    // MODIF: On ne force plus l'ouverture du tiroir
     setSearchTerm(prev => prev === tag ? "" : tag);
   };
 
@@ -411,7 +414,7 @@ export default function App() {
     setIsDrawerExpanded(!isDrawerExpanded);
   };
 
-  // --- 4. RENDU ---
+  // --- 5. RENDU ---
 
   return (
     <div className="flex flex-col h-screen text-gray-100 font-sans overflow-hidden relative" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
@@ -577,7 +580,6 @@ export default function App() {
                     value={searchTerm}
                     onChange={(e) => {
                         setSearchTerm(e.target.value);
-                        // MODIF : Plus d'ouverture automatique ici
                     }}
                   />
                   {searchTerm && (
@@ -633,12 +635,12 @@ export default function App() {
                     onTouchEnd={handleTouchEnd}
                     onClick={toggleDrawer}
                 >
-                    {/* MODIF : Retour du chevron animé */}
+                    {/* Chevron animé */}
                     {!isDrawerExpanded ? <ChevronUp size={14} className="animate-bounce text-[#facc15]" /> : <ChevronDown size={14} />}
                     {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques référencées`}
                 </div>
 
-                {/* BLOC D'APPEL À L'ACTION TOUJOURS VISIBLE */}
+                {/* BLOC D'APPEL À L'ACTION TOUJOURS VISIBLE EN HAUT DU CONTENU */}
                 <div className="px-4 pb-2 select-none pointer-events-auto">
                      <div className="text-center p-3 bg-[#1e1e2e]/80 rounded-xl border border-gray-700/50 backdrop-blur-sm">
                         <p className="text-[10px] text-gray-400 mb-1">
@@ -788,8 +790,8 @@ export default function App() {
         <div className="flex-1 relative bg-[#0f0f15] h-full overflow-hidden">
           <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1]" />
           
-          {/* CONTROLES GOOGLE MAPS STYLE (Masqués si modal) */}
-          {!isModalOpen && (
+          {/* CONTROLES GOOGLE MAPS STYLE (Masqués si modal ou tiroir ouvert sur mobile) */}
+          {(!isModalOpen && !(isDrawerExpanded && window.innerWidth < 768)) && (
               <div className="custom-map-controls pointer-events-auto">
                  <button 
                     className="reset-view-btn"
@@ -820,13 +822,15 @@ export default function App() {
           )}
 
           {/* --- INFO PANEL (Tuile) --- */}
+          {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* MODIF : Rehaussement pour ne pas coller au tiroir */
+                        /* Position mobile: au dessus du tiroir réduit + marge droite */
                         bottom-[185px] left-4 right-[66px] 
+                        /* Position desktop: ancré en bas à droite avec largeur fixe */
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
-                        /* MODIF : Bordure supérieure rose */
-                        bg-[#11111b]/95 backdrop-blur border-t-4 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
+                        /* MODIF : Arrondi 8px + Bordure Rose */
+                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: CONFIG.COLORS.PINK }}>
                <button 
                 onClick={() => {setSelectedShop(null); if(mapInstanceRef.current) mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });}}
@@ -883,12 +887,12 @@ export default function App() {
           <div className={`bg-[#181825] border-2 w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8`} style={{ borderColor: CONFIG.COLORS.YELLOW }}>
             <button 
               onClick={() => setIsModalOpen(false)}
-              className="absolute top-3 right-3 text-gray-500 hover:text-white"
+              className={`absolute top-3 right-3 text-gray-500 hover:text-white`}
             >
               <X size={24} />
             </button>
 
-            <h2 className="font-pixel text-xs mb-6 text-center border-b border-gray-700 pb-4" style={{ color: CONFIG.COLORS.YELLOW }}>
+            <h2 className={`font-pixel text-xs mb-6 text-center border-b border-gray-700 pb-4`} style={{ color: CONFIG.COLORS.YELLOW }}>
               Let's go hunt !
             </h2>
 
@@ -913,7 +917,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
+                      className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm`}
                       style={{ borderColor: '#374151' }}
                       onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                       onBlur={(e) => e.target.style.borderColor = '#374151'}
@@ -927,7 +931,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
+                      className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm`}
                       style={{ borderColor: '#374151' }}
                       onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                       onBlur={(e) => e.target.style.borderColor = '#374151'}
@@ -943,7 +947,7 @@ export default function App() {
                   <input 
                     required
                     type="text" 
-                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
+                    className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm`}
                     style={{ borderColor: '#374151' }}
                     onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                     onBlur={(e) => e.target.style.borderColor = '#374151'}
@@ -983,7 +987,7 @@ export default function App() {
                 <div>
                   <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
                   <textarea 
-                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm"
+                    className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm`}
                     style={{ borderColor: '#374151' }}
                     onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                     onBlur={(e) => e.target.style.borderColor = '#374151'}
