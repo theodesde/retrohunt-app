@@ -128,8 +128,8 @@ export default function App() {
 
     if (window.innerWidth < 768) {
         const point = map.project([shop.lat, shop.lng], targetZoom);
-        // Offset ajusté car le tiroir est plus haut
-        point.y = point.y + 180; 
+        // Offset réduit car le tiroir est plus bas
+        point.y = point.y + 50; 
         const targetLatLng = map.unproject(point, targetZoom);
         
         map.flyTo(targetLatLng, targetZoom, { duration: 1.5 });
@@ -193,38 +193,7 @@ export default function App() {
     Object.values(markersRef.current).forEach(marker => map.removeLayer(marker));
     markersRef.current = {};
 
-    // On affiche les points filtrés
-    const shopsToDisplay = filteredShops.length > 0 ? filteredShops : shops;
-    
-    // Note: ici on utilise 'shops' pour l'initialisation, mais le useEffect ci-dessous 
-    // déclenchera la mise à jour avec 'filteredShops'
-    shopsToRenderRef.current.forEach(shop => {
-       // ...
-    });
-  }, []); // On va gérer ça via le useEffect et filteredShops
-
-  // Fonction de rendu dédiée pour être appelée par le useEffect
-  const renderMarkers = useCallback((mapInstance, shopsToRender) => {
-    if (!window.L) return;
-
-    const retroIcon = window.L.divIcon({
-      className: 'custom-div-icon',
-      html: `<div style="background-color: ${CONFIG.COLORS.PINK}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 8px ${CONFIG.COLORS.PINK}, 0 0 20px ${CONFIG.COLORS.PINK};"></div>`,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
-    });
-
-    const yellowIcon = window.L.divIcon({
-      className: 'custom-div-icon-selected',
-      html: `<div style="background-color: ${CONFIG.COLORS.YELLOW}; width: 18px; height: 18px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 15px ${CONFIG.COLORS.YELLOW}, 0 0 30px ${CONFIG.COLORS.YELLOW}; transform: scale(1.2);"></div>`,
-      iconSize: [18, 18],
-      iconAnchor: [9, 9]
-    });
-
-    Object.values(markersRef.current).forEach(marker => mapInstance.removeLayer(marker));
-    markersRef.current = {};
-
-    shopsToRender.forEach(shop => {
+    shops.forEach(shop => {
       if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
         const safeName = escapeHtml(shop.name);
         const safeCity = escapeHtml(shop.city);
@@ -244,7 +213,7 @@ export default function App() {
             icon: isSelected ? yellowIcon : retroIcon,
             zIndexOffset: isSelected ? 1000 : 0 
         })
-          .addTo(mapInstance)
+          .addTo(map)
           .bindPopup(popupContent);
         
         if (isSelected) {
@@ -258,8 +227,7 @@ export default function App() {
         markersRef.current[shop.id] = marker;
       }
     });
-  }, [selectedShop, flyToShop]);
-
+  }, [shops, flyToShop, selectedShop]);
 
   const initMap = useCallback(() => {
     if (!window.L || mapInstanceRef.current) return;
@@ -276,7 +244,9 @@ export default function App() {
       maxZoom: 19,
       updateWhenZooming: false 
     }).addTo(map);
-  }, []);
+
+    updateMarkers(map);
+  }, [updateMarkers]);
 
   // Initialisation Leaflet
   useEffect(() => {
@@ -302,6 +272,12 @@ export default function App() {
         }
     };
   }, [initMap]);
+
+  useEffect(() => {
+    if (mapInstanceRef.current && window.L) {
+        updateMarkers(mapInstanceRef.current);
+    }
+  }, [shops, updateMarkers]);
 
   useEffect(() => {
     let timeoutId;
@@ -334,14 +310,6 @@ export default function App() {
       (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
     );
   }, [shops, searchTerm]);
-
-  // Mise à jour des marqueurs quand le filtre change ou la sélection
-  useEffect(() => {
-    if (mapInstanceRef.current && window.L) {
-        renderMarkers(mapInstanceRef.current, filteredShops);
-    }
-  }, [filteredShops, renderMarkers]);
-
 
   const toggleTag = (tag) => {
     setNewShopForm(prev => {
@@ -405,8 +373,8 @@ export default function App() {
     const newHeight = dragStartHeight.current + deltaY;
     
     const maxHeight = window.innerHeight * 0.85;
-    // MODIF : Hauteur min passée à 200px
-    if (newHeight >= 200 && newHeight <= maxHeight) {
+    // MODIF : Hauteur minimale passée à 60px
+    if (newHeight >= 60 && newHeight <= maxHeight) {
         drawerRef.current.style.height = `${newHeight}px`;
     }
   };
@@ -426,13 +394,13 @@ export default function App() {
             drawerRef.current.style.height = '85%';
         } else {
             setIsDrawerExpanded(false);
-            drawerRef.current.style.height = '200px'; // MODIF : 200px
+            drawerRef.current.style.height = '60px'; // MODIF : 60px
         }
     } else {
         if (isDrawerExpanded) {
              drawerRef.current.style.height = '85%';
         } else {
-             drawerRef.current.style.height = '200px'; // MODIF : 200px
+             drawerRef.current.style.height = '60px'; // MODIF : 60px
         }
     }
   };
@@ -447,7 +415,7 @@ export default function App() {
   // --- 5. RENDU ---
 
   return (
-    <div className="fixed inset-0 flex flex-col text-gray-100 font-sans overflow-hidden overscroll-none" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
+    <div className="flex flex-col h-screen text-gray-100 font-sans overflow-hidden relative" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Press+Start+2P&display=swap');
         .font-pixel { font-family: 'Press Start 2P', cursive; }
@@ -528,14 +496,14 @@ export default function App() {
 
         @media (max-width: 768px) {
             .custom-map-controls {
-                bottom: 220px !important; /* MODIF: 200px + 20px marge */
+                bottom: 80px !important; /* MODIF : Ajusté pour être juste au-dessus du tiroir réduit */
                 right: 10px;
             }
         }
       `}</style>
 
       {/* --- HEADER (Fixe) --- */}
-      <header className="h-16 flex items-center justify-between px-4 z-50 shrink-0 sticky top-0"
+      <header className="h-16 flex items-center justify-between px-4 z-30 shrink-0 relative"
               style={{ 
                 backgroundColor: CONFIG.COLORS.BG_DARK,
                 borderBottom: `4px solid ${CONFIG.COLORS.PINK}`,
@@ -643,7 +611,7 @@ export default function App() {
                 ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
                 style={{ 
-                    height: isDrawerExpanded ? '85%' : '200px', // MODIF: 200px
+                    height: isDrawerExpanded ? '85%' : '60px', // MODIF : 60px
                     touchAction: 'none',
                     zIndex: 2000
                 }}
@@ -821,7 +789,7 @@ export default function App() {
           <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1]" />
           
           {/* CONTROLES GOOGLE MAPS STYLE (Masqués si modal ouverte) */}
-          {!isModalOpen && (
+          {(!isModalOpen && !(isDrawerExpanded && window.innerWidth < 768)) && (
               <div className="custom-map-controls pointer-events-auto">
                  <button 
                     className="reset-view-btn"
@@ -855,8 +823,8 @@ export default function App() {
           {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* MODIF : Remonté à 210px */
-                        bottom-[210px] left-4 right-[66px] 
+                        /* MODIF : Remonté à 80px pour matcher le tiroir réduit */
+                        bottom-[80px] left-4 right-[66px] 
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
                         bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: CONFIG.COLORS.PINK }}>
@@ -912,15 +880,15 @@ export default function App() {
       {/* --- MODAL DE PROPOSITION --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[3000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#181825] border-2 w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8" style={{ borderColor: CONFIG.COLORS.YELLOW }}>
+          <div className={`bg-[#181825] border-2 w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8`} style={{ borderColor: CONFIG.COLORS.YELLOW }}>
             <button 
               onClick={() => setIsModalOpen(false)}
-              className="absolute top-3 right-3 text-gray-500 hover:text-white"
+              className={`absolute top-3 right-3 text-gray-500 hover:text-[${CONFIG.COLORS.YELLOW}]`}
             >
               <X size={24} />
             </button>
 
-            <h2 className="font-pixel text-xs mb-6 text-center border-b border-gray-700 pb-4" style={{ color: CONFIG.COLORS.YELLOW }}>
+            <h2 className={`font-pixel text-[${CONFIG.COLORS.YELLOW}] text-xs mb-6 text-center border-b border-gray-700 pb-4`} style={{ color: CONFIG.COLORS.YELLOW }}>
               Let's go hunt !
             </h2>
 
@@ -945,7 +913,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
+                      className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm`}
                       style={{ borderColor: '#374151' }}
                       onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                       onBlur={(e) => e.target.style.borderColor = '#374151'}
@@ -959,7 +927,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
+                      className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm`}
                       style={{ borderColor: '#374151' }}
                       onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                       onBlur={(e) => e.target.style.borderColor = '#374151'}
@@ -975,7 +943,7 @@ export default function App() {
                   <input 
                     required
                     type="text" 
-                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
+                    className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm`}
                     style={{ borderColor: '#374151' }}
                     onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                     onBlur={(e) => e.target.style.borderColor = '#374151'}
@@ -1015,7 +983,7 @@ export default function App() {
                 <div>
                   <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
                   <textarea 
-                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm"
+                    className={`w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm`}
                     style={{ borderColor: '#374151' }}
                     onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
                     onBlur={(e) => e.target.style.borderColor = '#374151'}
