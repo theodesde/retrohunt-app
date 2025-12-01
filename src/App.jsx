@@ -33,7 +33,6 @@ const AVAILABLE_TAGS = [
   "Rétrogaming", "Next Gen", "Import Japon", "Arcade", "Figurines", "Réparations", "Goodies"
 ];
 
-// Fonction de sécurité standard
 const escapeHtml = (unsafe) => {
   if (!unsafe) return "";
   const map = {
@@ -54,13 +53,11 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedShop, setSelectedShop] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true); 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // État logique du tiroir (Ouvert/Fermé)
   const [isDrawerExpanded, setIsDrawerExpanded] = useState(false);
-
-  // États pour le swipe
-  const [touchStart, setTouchStart] = useState(null);
-  const [touchEnd, setTouchEnd] = useState(null);
 
   const [newShopForm, setNewShopForm] = useState({ 
     name: '', city: '', address: '', tags: [], note: '' 
@@ -71,32 +68,12 @@ export default function App() {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef({});
-
-  // --- GESTION DU SWIPE SUR LE TIROIR ---
-  const minSwipeDistance = 50;
-
-  const onTouchStart = (e) => {
-    setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientY);
-  };
-
-  const onTouchMove = (e) => {
-    setTouchEnd(e.targetTouches[0].clientY);
-  };
-
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distance = touchStart - touchEnd;
-    const isUpSwipe = distance > minSwipeDistance;
-    const isDownSwipe = distance < -minSwipeDistance;
-
-    if (isUpSwipe) {
-      setIsDrawerExpanded(true);
-    }
-    if (isDownSwipe) {
-      setIsDrawerExpanded(false);
-    }
-  };
+  
+  // Refs pour la gestion du Swipe fluide
+  const drawerRef = useRef(null);
+  const dragStartY = useRef(0);
+  const dragStartHeight = useRef(0);
+  const isDragging = useRef(false);
 
   // --- 1. CHARGEMENT DES DONNÉES ---
   useEffect(() => {
@@ -144,35 +121,6 @@ export default function App() {
 
   // --- 2. GESTION DE LA CARTE ---
   
-  // Fonction intelligente pour zoomer avec un décalage (offset) sur mobile
-  // afin que le point ne soit pas caché par le panneau du bas
-  const flyToShopWithOffset = useCallback((shop) => {
-    if (!mapInstanceRef.current || !shop.lat || !shop.lng) return;
-
-    const map = mapInstanceRef.current;
-    const targetZoom = 15; // Zoom assez proche pour bien voir
-
-    if (window.innerWidth < 768) {
-        // SUR MOBILE : On calcule un décalage
-        // On projette les coordonnées Lat/Lng en pixels
-        const point = map.project([shop.lat, shop.lng], targetZoom);
-        // On décale le point cible vers le bas (donc la caméra vers le haut) de 150 pixels
-        // Cela permet au vrai point d'être plus haut sur l'écran
-        point.y = point.y + 150; 
-        // On reconvertit en Lat/Lng
-        const targetLatLng = map.unproject(point, targetZoom);
-        
-        map.flyTo(targetLatLng, targetZoom, { duration: 1.5 });
-    } else {
-        // SUR DESKTOP : Comportement normal
-        map.flyTo([shop.lat, shop.lng], targetZoom, { duration: 1.5 });
-    }
-
-    const marker = markersRef.current[shop.id];
-    if (marker) marker.openPopup();
-
-  }, []);
-
   const flyToShop = useCallback((shop) => {
     if (selectedShop && selectedShop.id === shop.id) {
         setSelectedShop(null);
@@ -181,9 +129,14 @@ export default function App() {
         if (window.innerWidth < 768) {
             setIsDrawerExpanded(false);
         }
-        flyToShopWithOffset(shop);
+        
+        if (mapInstanceRef.current && shop.lat && shop.lng) {
+            mapInstanceRef.current.flyTo([shop.lat, shop.lng], 13, { duration: 1.5 });
+            const marker = markersRef.current[shop.id];
+            if (marker) marker.openPopup();
+        }
     }
-  }, [selectedShop, flyToShopWithOffset]);
+  }, [selectedShop]);
 
   const resetMapToDefault = useCallback(() => {
     if (mapInstanceRef.current) {
@@ -264,7 +217,7 @@ export default function App() {
     if (!window.L || mapInstanceRef.current) return;
     
     const map = window.L.map(mapRef.current, {
-        zoomControl: false
+        zoomControl: false 
     }).setView(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom);
     
     mapInstanceRef.current = map;
@@ -279,6 +232,7 @@ export default function App() {
     updateMarkers(map);
   }, [updateMarkers]);
 
+  // Initialisation Leaflet
   useEffect(() => {
     if (window.L) {
       initMap();
@@ -384,6 +338,56 @@ export default function App() {
     setSearchTerm(prev => prev === tag ? "" : tag);
   };
 
+  // --- GESTION DU SWIPE FLUIDE ---
+
+  const handleTouchStart = (e) => {
+    // On ne capture le swipe que si on touche le header du tiroir
+    // ou si le tiroir est en haut et qu'on scroll vers le bas
+    isDragging.current = true;
+    dragStartY.current = e.touches[0].clientY;
+    
+    // On désactive la transition pour que le mouvement suive le doigt instantanément
+    if (drawerRef.current) {
+        drawerRef.current.style.transition = 'none';
+        dragStartHeight.current = drawerRef.current.getBoundingClientRect().height;
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isDragging.current || !drawerRef.current) return;
+
+    const currentY = e.touches[0].clientY;
+    const deltaY = dragStartY.current - currentY; // Positif si on monte
+    const newHeight = dragStartHeight.current + deltaY;
+    
+    // Limites (Min: 160px, Max: 85% de l'écran)
+    const maxHeight = window.innerHeight * 0.85;
+    if (newHeight >= 160 && newHeight <= maxHeight) {
+        drawerRef.current.style.height = `${newHeight}px`;
+    }
+  };
+
+  const handleTouchEnd = (e) => {
+    if (!isDragging.current || !drawerRef.current) return;
+    isDragging.current = false;
+
+    // On réactive la transition pour le "snap" final
+    drawerRef.current.style.transition = 'height 0.3s ease-out';
+
+    const currentHeight = drawerRef.current.getBoundingClientRect().height;
+    const threshold = window.innerHeight * 0.5; // Seuil à 50% de l'écran
+
+    if (currentHeight > threshold) {
+        setIsDrawerExpanded(true);
+        // Le style inline sera écrasé par le state React au prochain render, 
+        // mais on force le style pour l'animation immédiate
+        drawerRef.current.style.height = '85%'; 
+    } else {
+        setIsDrawerExpanded(false);
+        drawerRef.current.style.height = '160px';
+    }
+  };
+
   const toggleDrawer = () => {
     if (!isDrawerExpanded) {
         setSelectedShop(null);
@@ -415,6 +419,7 @@ export default function App() {
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .cursor-wait { cursor: wait; }
         
+        /* Styles pour les contrôles de map custom */
         .custom-map-controls {
             position: absolute;
             bottom: 24px;
@@ -468,8 +473,13 @@ export default function App() {
             transition: all 0.2s;
             position: relative;
         }
-        .zoom-btn:last-child::after { display: none; }
-        .zoom-btn:hover { background-color: #f3f3f3; color: #333333; }
+        .zoom-btn:last-child {
+            border-bottom: none;
+        }
+        .zoom-btn:hover {
+            background-color: #f3f3f3;
+            color: #333333;
+        }
 
         @media (max-width: 768px) {
             .custom-map-controls {
@@ -581,25 +591,32 @@ export default function App() {
                 </div>
             </div>
 
-            {/* 2. TIROIR (DRAWER) EN BAS */}
+            {/* 2. TIROIR (DRAWER) EN BAS AVEC SWIPE */}
             <div 
+                ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
-                // Ajout des événements tactiles pour le swipe
-                onTouchStart={onTouchStart}
-                onTouchMove={onTouchMove}
-                onTouchEnd={onTouchEnd}
                 style={{ 
-                    height: isDrawerExpanded ? '80%' : '160px',
+                    height: isDrawerExpanded ? '85%' : '160px',
+                    touchAction: 'none' // IMPORTANT pour le drag
                 }}
             >
-                {/* Poignée du tiroir */}
+                {/* Poignée du tiroir (Zone de swipe) */}
                 <div 
-                    className="w-full flex justify-center items-center p-2 cursor-pointer hover:bg-white/5 rounded-t-3xl pt-3"
-                    onClick={toggleDrawer}
+                    className="w-full flex justify-center items-center p-2 cursor-pointer hover:bg-white/5 rounded-t-3xl pt-3 select-none"
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onClick={toggleDrawer} // Click fallback
                 >
                     <div className="w-10 h-1 bg-gray-500 rounded-full mb-1"></div>
                 </div>
-                <div className="text-center text-[10px] text-gray-500 font-pixel mb-3 uppercase tracking-wider" onClick={toggleDrawer}>
+                <div 
+                    className="text-center text-[10px] text-gray-500 font-pixel mb-3 uppercase tracking-wider select-none" 
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onClick={toggleDrawer}
+                >
                     {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques à proximité`}
                 </div>
 
@@ -639,7 +656,7 @@ export default function App() {
         </div>
 
 
-        {/* --- DESKTOP SIDEBAR --- */}
+        {/* --- DESKTOP SIDEBAR (Inchangée) --- */}
         <div className={`
           hidden md:flex z-10 bg-[#181825]/95 backdrop-blur-md 
           border-r border-gray-800 
@@ -648,7 +665,8 @@ export default function App() {
           ${isSidebarOpen ? 'w-80' : 'w-0'}
         `}>
           <div className="p-4 border-b border-gray-700 flex flex-col gap-3 shrink-0">
-            <div className="relative">
+            {/* ... Search desktop ... */}
+             <div className="relative">
               <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
               <input 
                 type="text" 
@@ -768,13 +786,14 @@ export default function App() {
           </div>
 
           {/* --- INFO PANEL (Tuile) --- */}
+          {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* Position mobile: au dessus du drawer réduit + marge droite pour éviter boutons */
-                        bottom-[170px] left-4 right-[66px]
-                        /* Position desktop: ancré en bas à droite avec largeur fixe */
+                        /* Position mobile: Au dessus du tiroir, avec marges */
+                        bottom-[170px] left-4 right-[66px] 
+                        /* Position desktop: ancré en bas à droite */
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
-                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 md:rounded-3xl p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
+                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-3xl md:rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: '#d8b4fe' }}>
                <button 
                 onClick={() => {setSelectedShop(null); if(mapInstanceRef.current) mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });}}
@@ -783,7 +802,7 @@ export default function App() {
                 <X size={18} />
               </button>
               
-              <div className="flex flex-wrap items-center gap-3 mb-3">
+              <div className="flex flex-wrap items-center gap-3 mb-3 pr-6">
                 <div className="flex items-center gap-2">
                   <Gamepad2 style={{ color: CONFIG.COLORS.CYAN }} size={20} />
                   <h2 className="font-pixel text-xs uppercase leading-relaxed" style={{ color: CONFIG.COLORS.CYAN }}>{selectedShop.name}</h2>
@@ -825,7 +844,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* --- MODAL DE PROPOSITION --- */}
+      {/* --- MODAL DE PROPOSITION (Inchangée) --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className={`bg-[#181825] border-2 border-[${CONFIG.COLORS.YELLOW}] w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8`}>
