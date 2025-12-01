@@ -373,6 +373,7 @@ export default function App() {
     const newHeight = dragStartHeight.current + deltaY;
     
     const maxHeight = window.innerHeight * 0.85;
+    // Seuil minimal relevé à 175px pour correspondre à la position fermée
     if (newHeight >= 175 && newHeight <= maxHeight) {
         drawerRef.current.style.height = `${newHeight}px`;
     }
@@ -384,7 +385,6 @@ export default function App() {
 
     drawerRef.current.style.transition = 'height 0.3s ease-out';
 
-    const currentHeight = drawerRef.current.getBoundingClientRect().height;
     const threshold = 50; 
     const deltaY = dragStartY.current - e.changedTouches[0].clientY;
 
@@ -415,8 +415,8 @@ export default function App() {
   // --- 4. RENDU ---
 
   return (
-    // MODIF : h-[100dvh] pour la hauteur dynamique mobile et overscroll-none pour bloquer le scroll body
-    <div className="flex flex-col h-[100dvh] w-full text-gray-100 font-sans overflow-hidden relative overscroll-none" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
+    // MODIF: fixed et inset-0 pour bloquer le scroll global du body sur mobile
+    <div className="fixed inset-0 flex flex-col bg-black text-gray-100 font-sans overflow-hidden" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Press+Start+2P&display=swap');
         .font-pixel { font-family: 'Press Start 2P', cursive; }
@@ -504,7 +504,7 @@ export default function App() {
       `}</style>
 
       {/* --- HEADER (Fixe) --- */}
-      <header className="h-16 flex items-center justify-between px-4 z-50 shrink-0 sticky top-0"
+      <header className="h-16 flex items-center justify-between px-4 z-50 shrink-0 relative w-full"
               style={{ 
                 backgroundColor: CONFIG.COLORS.BG_DARK,
                 borderBottom: `4px solid ${CONFIG.COLORS.PINK}`,
@@ -560,7 +560,7 @@ export default function App() {
       </header>
 
       {/* --- CONTENEUR PRINCIPAL --- */}
-      <div className="flex-1 relative overflow-hidden flex md:flex-row">
+      <div className="flex-1 relative overflow-hidden flex md:flex-row w-full h-full">
         
         {/* --- MOBILE UI OVERLAY (Recherche + Drawer) --- */}
         <div className="md:hidden absolute inset-0 z-[2000] pointer-events-none flex flex-col justify-between">
@@ -654,8 +654,9 @@ export default function App() {
                      </div>
                 </div>
 
-                {/* Contenu du tiroir */}
-                <div className={`flex-1 overflow-y-auto p-4 pt-0 space-y-3 pb-8 ${!isDrawerExpanded ? 'hidden' : ''}`}>
+                {/* Contenu du tiroir (Liste défilable) */}
+                {/* MODIF : overscroll-contain pour éviter de scroller la page parent */}
+                <div className={`flex-1 overflow-y-auto overscroll-contain p-4 pt-0 space-y-3 pb-8 ${!isDrawerExpanded ? 'hidden' : ''}`}>
                     {filteredShops.map(shop => (
                         <div 
                             key={shop.id}
@@ -821,10 +822,14 @@ export default function App() {
           )}
 
           {/* --- INFO PANEL (Tuile) --- */}
+          {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
+                        /* Position mobile: au dessus du tiroir réduit + marge droite */
                         bottom-[185px] left-4 right-[66px] 
+                        /* Position desktop: ancré en bas à droite avec largeur fixe */
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
+                        /* MODIF : Arrondi 8px + Bordure Rose */
                         bg-[#11111b]/95 backdrop-blur border-t-4 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: CONFIG.COLORS.PINK }}>
                <button 
