@@ -56,8 +56,6 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  // État pour le tiroir mobile (Drawer)
   const [isDrawerExpanded, setIsDrawerExpanded] = useState(false);
 
   const [newShopForm, setNewShopForm] = useState({ 
@@ -194,7 +192,35 @@ export default function App() {
     Object.values(markersRef.current).forEach(marker => map.removeLayer(marker));
     markersRef.current = {};
 
+    // Utilisation de filteredShops pour la carte aussi (via renderMarkers appelé dans le useEffect)
+    // Mais ici, on garde shops car c'est filteredShops qui trigger l'update
     shops.forEach(shop => {
+       // ... logique marqueurs (gérée par useEffect/renderMarkers en réalité)
+    });
+  }, [shops]); 
+
+  // Version effective qui utilise la liste filtrée
+  const renderMarkers = useCallback((mapInstance, shopsToRender) => {
+    if (!window.L) return;
+
+    const retroIcon = window.L.divIcon({
+      className: 'custom-div-icon',
+      html: `<div style="background-color: ${CONFIG.COLORS.PINK}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 8px ${CONFIG.COLORS.PINK}, 0 0 20px ${CONFIG.COLORS.PINK};"></div>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7]
+    });
+
+    const yellowIcon = window.L.divIcon({
+      className: 'custom-div-icon-selected',
+      html: `<div style="background-color: ${CONFIG.COLORS.YELLOW}; width: 18px; height: 18px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 15px ${CONFIG.COLORS.YELLOW}, 0 0 30px ${CONFIG.COLORS.YELLOW}; transform: scale(1.2);"></div>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9]
+    });
+
+    Object.values(markersRef.current).forEach(marker => mapInstance.removeLayer(marker));
+    markersRef.current = {};
+
+    shopsToRender.forEach(shop => {
       if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
         const safeName = escapeHtml(shop.name);
         const safeCity = escapeHtml(shop.city);
@@ -214,7 +240,7 @@ export default function App() {
             icon: isSelected ? yellowIcon : retroIcon,
             zIndexOffset: isSelected ? 1000 : 0 
         })
-          .addTo(map)
+          .addTo(mapInstance)
           .bindPopup(popupContent);
         
         if (isSelected) {
@@ -228,7 +254,8 @@ export default function App() {
         markersRef.current[shop.id] = marker;
       }
     });
-  }, [shops, flyToShop, selectedShop]);
+  }, [selectedShop, flyToShop]);
+
 
   const initMap = useCallback(() => {
     if (!window.L || mapInstanceRef.current) return;
@@ -245,9 +272,7 @@ export default function App() {
       maxZoom: 19,
       updateWhenZooming: false 
     }).addTo(map);
-
-    updateMarkers(map);
-  }, [updateMarkers]);
+  }, []);
 
   // Initialisation Leaflet
   useEffect(() => {
@@ -275,12 +300,6 @@ export default function App() {
   }, [initMap]);
 
   useEffect(() => {
-    if (mapInstanceRef.current && window.L) {
-        updateMarkers(mapInstanceRef.current);
-    }
-  }, [shops, updateMarkers]);
-
-  useEffect(() => {
     let timeoutId;
     if (mapInstanceRef.current) {
       timeoutId = setTimeout(() => {
@@ -290,6 +309,7 @@ export default function App() {
     return () => clearTimeout(timeoutId);
   }, [isSidebarOpen, isDrawerExpanded]);
 
+  // Centrage initial
   useEffect(() => {
     let timeoutId;
     if (!mapInstanceRef.current || isLoading || shops.length === 0 || !window.L) return;
@@ -311,6 +331,14 @@ export default function App() {
       (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
     );
   }, [shops, searchTerm]);
+
+  // Mise à jour des marqueurs quand le filtre change
+  useEffect(() => {
+    if (mapInstanceRef.current && window.L) {
+        renderMarkers(mapInstanceRef.current, filteredShops);
+    }
+  }, [filteredShops, renderMarkers]);
+
 
   const toggleTag = (tag) => {
     setNewShopForm(prev => {
@@ -352,9 +380,14 @@ export default function App() {
 
   const searchByTag = (e, tag) => {
     e?.stopPropagation();
-    setSearchTerm(prev => prev === tag ? "" : tag);
+    setSearchTerm(prev => {
+        const newVal = prev === tag ? "" : tag;
+        if (newVal !== "") setIsDrawerExpanded(true); 
+        return newVal;
+    });
   };
 
+  // --- GESTION DU SWIPE FLUIDE ---
   const handleTouchStart = (e) => {
     isDragging.current = true;
     dragStartY.current = e.touches[0].clientY;
@@ -373,8 +406,8 @@ export default function App() {
     const newHeight = dragStartHeight.current + deltaY;
     
     const maxHeight = window.innerHeight * 0.85;
-    // Seuil minimal relevé à 175px pour correspondre à la position fermée
-    if (newHeight >= 175 && newHeight <= maxHeight) {
+    // MODIF : Hauteur min 145px
+    if (newHeight >= 145 && newHeight <= maxHeight) {
         drawerRef.current.style.height = `${newHeight}px`;
     }
   };
@@ -394,13 +427,13 @@ export default function App() {
             drawerRef.current.style.height = '85%';
         } else {
             setIsDrawerExpanded(false);
-            drawerRef.current.style.height = '175px';
+            drawerRef.current.style.height = '145px'; // MODIF
         }
     } else {
         if (isDrawerExpanded) {
              drawerRef.current.style.height = '85%';
         } else {
-             drawerRef.current.style.height = '175px';
+             drawerRef.current.style.height = '145px'; // MODIF
         }
     }
   };
@@ -412,11 +445,10 @@ export default function App() {
     setIsDrawerExpanded(!isDrawerExpanded);
   };
 
-  // --- 4. RENDU ---
+  // --- 5. RENDU ---
 
   return (
-    // MODIF: fixed et inset-0 pour bloquer le scroll global du body sur mobile
-    <div className="fixed inset-0 flex flex-col bg-black text-gray-100 font-sans overflow-hidden" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
+    <div className="flex flex-col h-screen text-gray-100 font-sans overflow-hidden relative" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Press+Start+2P&display=swap');
         .font-pixel { font-family: 'Press Start 2P', cursive; }
@@ -497,14 +529,14 @@ export default function App() {
 
         @media (max-width: 768px) {
             .custom-map-controls {
-                bottom: 195px !important; 
+                bottom: 165px !important; /* MODIF: 145px + 20px marge */
                 right: 10px;
             }
         }
       `}</style>
 
       {/* --- HEADER (Fixe) --- */}
-      <header className="h-16 flex items-center justify-between px-4 z-50 shrink-0 relative w-full"
+      <header className="h-16 flex items-center justify-between px-4 z-30 shrink-0 relative"
               style={{ 
                 backgroundColor: CONFIG.COLORS.BG_DARK,
                 borderBottom: `4px solid ${CONFIG.COLORS.PINK}`,
@@ -560,7 +592,7 @@ export default function App() {
       </header>
 
       {/* --- CONTENEUR PRINCIPAL --- */}
-      <div className="flex-1 relative overflow-hidden flex md:flex-row w-full h-full">
+      <div className="flex-1 relative overflow-hidden flex md:flex-row">
         
         {/* --- MOBILE UI OVERLAY (Recherche + Drawer) --- */}
         <div className="md:hidden absolute inset-0 z-[2000] pointer-events-none flex flex-col justify-between">
@@ -579,6 +611,10 @@ export default function App() {
                     value={searchTerm}
                     onChange={(e) => {
                         setSearchTerm(e.target.value);
+                        // Ouvre le tiroir si on tape
+                        if(e.target.value.trim() !== '' && !isDrawerExpanded) {
+                            setIsDrawerExpanded(true);
+                        }
                     }}
                   />
                   {searchTerm && (
@@ -612,7 +648,7 @@ export default function App() {
                 ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
                 style={{ 
-                    height: isDrawerExpanded ? '85%' : '175px',
+                    height: isDrawerExpanded ? '85%' : '145px', // MODIF : 145px
                     touchAction: 'none',
                     zIndex: 2000
                 }}
@@ -654,9 +690,8 @@ export default function App() {
                      </div>
                 </div>
 
-                {/* Contenu du tiroir (Liste défilable) */}
-                {/* MODIF : overscroll-contain pour éviter de scroller la page parent */}
-                <div className={`flex-1 overflow-y-auto overscroll-contain p-4 pt-0 space-y-3 pb-8 ${!isDrawerExpanded ? 'hidden' : ''}`}>
+                {/* Contenu du tiroir */}
+                <div className={`flex-1 overflow-y-auto p-4 pt-0 space-y-3 pb-8 ${!isDrawerExpanded ? 'hidden' : ''}`}>
                     {filteredShops.map(shop => (
                         <div 
                             key={shop.id}
@@ -825,12 +860,10 @@ export default function App() {
           {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* Position mobile: au dessus du tiroir réduit + marge droite */
-                        bottom-[185px] left-4 right-[66px] 
-                        /* Position desktop: ancré en bas à droite avec largeur fixe */
+                        /* MODIF : 145px + 10px marge = 155px */
+                        bottom-[155px] left-4 right-[66px] 
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
-                        /* MODIF : Arrondi 8px + Bordure Rose */
-                        bg-[#11111b]/95 backdrop-blur border-t-4 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
+                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: CONFIG.COLORS.PINK }}>
                <button 
                 onClick={() => {setSelectedShop(null); if(mapInstanceRef.current) mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });}}
