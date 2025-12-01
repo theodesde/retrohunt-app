@@ -128,8 +128,8 @@ export default function App() {
 
     if (window.innerWidth < 768) {
         const point = map.project([shop.lat, shop.lng], targetZoom);
-        // Offset ajusté pour la nouvelle hauteur du tiroir compact (135px)
-        point.y = point.y + 80; 
+        // Offset ajusté (plus grand car tiroir plus haut)
+        point.y = point.y + 100; 
         const targetLatLng = map.unproject(point, targetZoom);
         
         map.flyTo(targetLatLng, targetZoom, { duration: 1.5 });
@@ -193,7 +193,34 @@ export default function App() {
     Object.values(markersRef.current).forEach(marker => map.removeLayer(marker));
     markersRef.current = {};
 
+    // Ici 'shops' est utilisé mais le useEffect déclenchera avec 'filteredShops'
     shops.forEach(shop => {
+       // ...
+    });
+  }, [shops]); 
+
+  // Fonction de rendu dédiée pour être appelée par le useEffect
+  const renderMarkers = useCallback((mapInstance, shopsToRender) => {
+    if (!window.L) return;
+
+    const retroIcon = window.L.divIcon({
+      className: 'custom-div-icon',
+      html: `<div style="background-color: ${CONFIG.COLORS.PINK}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 8px ${CONFIG.COLORS.PINK}, 0 0 20px ${CONFIG.COLORS.PINK};"></div>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7]
+    });
+
+    const yellowIcon = window.L.divIcon({
+      className: 'custom-div-icon-selected',
+      html: `<div style="background-color: ${CONFIG.COLORS.YELLOW}; width: 18px; height: 18px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 15px ${CONFIG.COLORS.YELLOW}, 0 0 30px ${CONFIG.COLORS.YELLOW}; transform: scale(1.2);"></div>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9]
+    });
+
+    Object.values(markersRef.current).forEach(marker => mapInstance.removeLayer(marker));
+    markersRef.current = {};
+
+    shopsToRender.forEach(shop => {
       if (shop.lat && shop.lng && !isNaN(shop.lat) && !isNaN(shop.lng)) {
         const safeName = escapeHtml(shop.name);
         const safeCity = escapeHtml(shop.city);
@@ -213,7 +240,7 @@ export default function App() {
             icon: isSelected ? yellowIcon : retroIcon,
             zIndexOffset: isSelected ? 1000 : 0 
         })
-          .addTo(map)
+          .addTo(mapInstance)
           .bindPopup(popupContent);
         
         if (isSelected) {
@@ -227,7 +254,7 @@ export default function App() {
         markersRef.current[shop.id] = marker;
       }
     });
-  }, [shops, flyToShop, selectedShop]);
+  }, [selectedShop, flyToShop]);
 
   const initMap = useCallback(() => {
     if (!window.L || mapInstanceRef.current) return;
@@ -244,9 +271,7 @@ export default function App() {
       maxZoom: 19,
       updateWhenZooming: false 
     }).addTo(map);
-
-    updateMarkers(map);
-  }, [updateMarkers]);
+  }, []);
 
   // Initialisation Leaflet
   useEffect(() => {
@@ -272,12 +297,6 @@ export default function App() {
         }
     };
   }, [initMap]);
-
-  useEffect(() => {
-    if (mapInstanceRef.current && window.L) {
-        updateMarkers(mapInstanceRef.current);
-    }
-  }, [shops, updateMarkers]);
 
   useEffect(() => {
     let timeoutId;
@@ -310,6 +329,14 @@ export default function App() {
       (shop.tags && shop.tags.some(tag => tag.toLowerCase().includes(term)))
     );
   }, [shops, searchTerm]);
+
+  // Mise à jour des marqueurs
+  useEffect(() => {
+    if (mapInstanceRef.current && window.L) {
+        renderMarkers(mapInstanceRef.current, filteredShops);
+    }
+  }, [filteredShops, renderMarkers]);
+
 
   const toggleTag = (tag) => {
     setNewShopForm(prev => {
@@ -373,8 +400,8 @@ export default function App() {
     const newHeight = dragStartHeight.current + deltaY;
     
     const maxHeight = window.innerHeight * 0.85;
-    // MODIF : Hauteur minimale ajustée à 135px pour être plus compact sur navigateur
-    if (newHeight >= 135 && newHeight <= maxHeight) {
+    // MODIF : Hauteur minimale ajustée à 150px
+    if (newHeight >= 150 && newHeight <= maxHeight) {
         drawerRef.current.style.height = `${newHeight}px`;
     }
   };
@@ -394,13 +421,13 @@ export default function App() {
             drawerRef.current.style.height = '85%';
         } else {
             setIsDrawerExpanded(false);
-            drawerRef.current.style.height = '135px'; // MODIF : 135px
+            drawerRef.current.style.height = '150px'; // MODIF : 150px
         }
     } else {
         if (isDrawerExpanded) {
              drawerRef.current.style.height = '85%';
         } else {
-             drawerRef.current.style.height = '135px'; // MODIF : 135px
+             drawerRef.current.style.height = '150px'; // MODIF : 150px
         }
     }
   };
@@ -496,7 +523,7 @@ export default function App() {
 
         @media (max-width: 768px) {
             .custom-map-controls {
-                bottom: 155px !important; /* MODIF: 135px + 20px marge */
+                bottom: 180px !important; /* MODIF: 150px + 30px marge */
                 right: 10px;
             }
         }
@@ -611,7 +638,7 @@ export default function App() {
                 ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
                 style={{ 
-                    height: isDrawerExpanded ? '85%' : '135px', // MODIF : 135px pour être plus compact
+                    height: isDrawerExpanded ? '85%' : '150px', // MODIF : 150px
                     touchAction: 'none',
                     zIndex: 2000
                 }}
@@ -823,8 +850,8 @@ export default function App() {
           {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* MODIF : Remonté à 145px pour matcher le tiroir */
-                        bottom-[145px] left-4 right-[66px] 
+                        /* MODIF : Remonté à 160px pour matcher le tiroir réduit de 150px */
+                        bottom-[160px] left-4 right-[66px] 
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
                         bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: CONFIG.COLORS.PINK }}>
