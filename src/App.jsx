@@ -650,7 +650,7 @@ export default function App() {
                 <div className="px-4 pb-2 select-none pointer-events-auto">
                      <div className="text-center p-3 bg-[#1e1e2e]/80 rounded-xl border border-gray-700/50 backdrop-blur-sm">
                         <p className="text-[10px] text-gray-400 mb-1">
-                            Tu connais une adresse qui manque ?
+                            Tu connais une bonne adresse qui manque ?
                         </p>
                         <button 
                             onClick={() => setIsModalOpen(true)}
@@ -912,7 +912,7 @@ export default function App() {
             ) : (
               <form onSubmit={handleSuggestSubmit} className="space-y-4">
                 <p className="text-xs text-gray-400 mb-4 italic text-center">
-                  Aide-nous à cartographier les meilleures adresses. N'oublie pas de préciser le pays !
+                  Aide-nous à cartographier les meilleures adresses. N'oublie pas de donner une petit description !
                 </p>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
