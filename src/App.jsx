@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { MapPin, Gamepad2, Search, Plus, X, ExternalLink, Menu, Tag, Instagram, Loader2, Crown } from 'lucide-react';
+import { MapPin, Gamepad2, Search, Plus, X, ExternalLink, Menu, Tag, Instagram, Loader2, Crown, ChevronUp, ChevronDown, Globe, Minus } from 'lucide-react';
 import emailjs from '@emailjs/browser';
 import Papa from 'papaparse';
 
@@ -33,7 +33,7 @@ const AVAILABLE_TAGS = [
   "Rétrogaming", "Next Gen", "Import Japon", "Arcade", "Figurines", "Réparations", "Goodies"
 ];
 
-// Sécurisation basique contre XSS pour les popups Leaflet
+// CORRECTION DÉFINITIVE : Fonction de sécurité standard
 const escapeHtml = (unsafe) => {
   if (!unsafe) return "";
   return unsafe
@@ -43,7 +43,6 @@ const escapeHtml = (unsafe) => {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 };
-
 // ==================================================================================
 
 export default function App() {
@@ -52,15 +51,15 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedShop, setSelectedShop] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true); 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
+  const [isDrawerExpanded, setIsDrawerExpanded] = useState(false);
+
   const [newShopForm, setNewShopForm] = useState({ 
     name: '', city: '', address: '', tags: [], note: '' 
   });
   const [submitStatus, setSubmitStatus] = useState(null);
 
-  // Refs
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef({});
@@ -109,18 +108,17 @@ export default function App() {
     return () => { isMounted = false; };
   }, []);
 
-  // --- 2. GESTION DE LA CARTE (Leaflet) ---
+  // --- 2. GESTION DE LA CARTE ---
   
   const flyToShop = useCallback((shop) => {
     if (selectedShop && selectedShop.id === shop.id) {
-        // Deselect
         setSelectedShop(null);
-        if (mapInstanceRef.current) {
-            mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });
-        }
     } else {
-        // Select
         setSelectedShop(shop);
+        if (window.innerWidth < 768) {
+            setIsDrawerExpanded(false);
+        }
+        
         if (mapInstanceRef.current && shop.lat && shop.lng) {
             mapInstanceRef.current.flyTo([shop.lat, shop.lng], 13, { duration: 1.5 });
             const marker = markersRef.current[shop.id];
@@ -128,6 +126,25 @@ export default function App() {
         }
     }
   }, [selectedShop]);
+
+  const resetMapToDefault = useCallback(() => {
+    if (mapInstanceRef.current) {
+        setSelectedShop(null);
+        mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });
+    }
+  }, []);
+
+  const handleZoomIn = useCallback(() => {
+    if (mapInstanceRef.current) {
+        mapInstanceRef.current.zoomIn();
+    }
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    if (mapInstanceRef.current) {
+        mapInstanceRef.current.zoomOut();
+    }
+  }, []);
 
   const updateMarkers = useCallback((map) => {
     if (!window.L) return;
@@ -139,7 +156,13 @@ export default function App() {
       iconAnchor: [7, 7]
     });
 
-    // Nettoyage des anciens marqueurs
+    const yellowIcon = window.L.divIcon({
+      className: 'custom-div-icon-selected',
+      html: `<div style="background-color: ${CONFIG.COLORS.YELLOW}; width: 18px; height: 18px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 15px ${CONFIG.COLORS.YELLOW}, 0 0 30px ${CONFIG.COLORS.YELLOW}; transform: scale(1.2);"></div>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9]
+    });
+
     Object.values(markersRef.current).forEach(marker => map.removeLayer(marker));
     markersRef.current = {};
 
@@ -157,9 +180,18 @@ export default function App() {
             </div>
           `;
 
-        const marker = window.L.marker([shop.lat, shop.lng], { icon: retroIcon })
+        const isSelected = selectedShop?.id === shop.id;
+
+        const marker = window.L.marker([shop.lat, shop.lng], { 
+            icon: isSelected ? yellowIcon : retroIcon,
+            zIndexOffset: isSelected ? 1000 : 0 
+        })
           .addTo(map)
           .bindPopup(popupContent);
+        
+        if (isSelected) {
+            setTimeout(() => marker.openPopup(), 100);
+        }
         
         marker.on('click', () => {
           flyToShop(shop); 
@@ -168,12 +200,15 @@ export default function App() {
         markersRef.current[shop.id] = marker;
       }
     });
-  }, [shops, flyToShop]);
+  }, [shops, flyToShop, selectedShop]);
 
   const initMap = useCallback(() => {
     if (!window.L || mapInstanceRef.current) return;
     
-    const map = window.L.map(mapRef.current).setView(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom);
+    const map = window.L.map(mapRef.current, {
+        zoomControl: false 
+    }).setView(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom);
+    
     mapInstanceRef.current = map;
 
     window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -186,13 +221,11 @@ export default function App() {
     updateMarkers(map);
   }, [updateMarkers]);
 
-  // Initialisation des scripts Leaflet
   useEffect(() => {
     if (window.L) {
       initMap();
       return;
     }
-
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
@@ -212,14 +245,12 @@ export default function App() {
     };
   }, [initMap]);
 
-  // Mise à jour des marqueurs
   useEffect(() => {
     if (mapInstanceRef.current && window.L) {
         updateMarkers(mapInstanceRef.current);
     }
   }, [shops, updateMarkers]);
 
-  // Fix redimensionnement
   useEffect(() => {
     let timeoutId;
     if (mapInstanceRef.current) {
@@ -228,33 +259,20 @@ export default function App() {
       }, 350);
     }
     return () => clearTimeout(timeoutId);
-  }, [isSidebarOpen]);
+  }, [isSidebarOpen, isDrawerExpanded]);
 
-  // Centrage initial
   useEffect(() => {
     let timeoutId;
     if (!mapInstanceRef.current || isLoading || shops.length === 0 || !window.L) return;
     
-    const allMarkers = shops
-        .filter(shop => shop.lat && shop.lng)
-        .map(shop => window.L.marker([shop.lat, shop.lng]));
-
-    if (allMarkers.length > 0) {
-        const group = new window.L.featureGroup(allMarkers);
-        timeoutId = setTimeout(() => {
-             try {
-                mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [50, 50], maxZoom: 13 });
-             } catch (e) { console.log('Fitbounds error', e); }
-        }, 100);
-    } else {
+    if (!selectedShop) {
         mapInstanceRef.current.setView(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom);
     }
-
     return () => clearTimeout(timeoutId);
-  }, [shops, isLoading]); 
+  }, [isLoading]);
 
 
-  // --- 3. LOGIQUE MÉTIER & FILTRES ---
+  // --- 3. LOGIQUE MÉTIER ---
 
   const filteredShops = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -308,6 +326,13 @@ export default function App() {
     setSearchTerm(prev => prev === tag ? "" : tag);
   };
 
+  const toggleDrawer = () => {
+    if (!isDrawerExpanded) {
+        setSelectedShop(null);
+    }
+    setIsDrawerExpanded(!isDrawerExpanded);
+  };
+
   // --- 4. RENDU ---
 
   return (
@@ -326,20 +351,95 @@ export default function App() {
           pointer-events: none; z-index: 50; opacity: 0.3;
         }
         .shop-name-color { color: ${CONFIG.COLORS.CYAN}; }
+        .leaflet-container { background-color: #1D1D1D !important; }
+        #map { filter: grayscale(20%) contrast(1.1); }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .cursor-wait { cursor: wait; }
-
-        .leaflet-container {
-            background-color: #1D1D1D !important; 
+        
+        /* --- STYLE GOOGLE MAPS PUR --- */
+        .custom-map-controls {
+            position: absolute;
+            bottom: 24px;
+            right: 12px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
         }
-        #map {
-             filter: grayscale(20%) contrast(1.1); 
+
+        /* 1. BOUTON RESET (GLOBE) : Carré blanc, coins arrondis, ombre */
+        .reset-view-btn {
+            width: 40px;
+            height: 40px;
+            background-color: white;
+            color: #666666;
+            border: none;
+            border-radius: 8px; /* Style Google */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .reset-view-btn:hover {
+            background-color: #f3f3f3;
+            color: #333333;
+        }
+
+        /* 2. GROUPE ZOOM : Pilule/Rectangle arrondi, séparateur interne */
+        .zoom-buttons {
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-radius: 8px; /* Style Google standard */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .zoom-btn {
+            width: 40px;
+            height: 40px;
+            background-color: white;
+            color: #666666;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            position: relative;
+        }
+        
+        /* Petit trait de séparation entre + et - */
+        .zoom-btn:first-child::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 5px;
+            right: 5px;
+            height: 1px;
+            background-color: #e6e6e6;
+        }
+
+        .zoom-btn:hover {
+            background-color: #f3f3f3;
+            color: #333333;
+        }
+
+        /* --- FIX MOBILE : Remonter les boutons au-dessus du tiroir --- */
+        @media (max-width: 768px) {
+            .custom-map-controls {
+                bottom: 180px !important; 
+                right: 12px;
+            }
         }
       `}</style>
 
       {/* --- HEADER --- */}
-      <header className="h-16 flex items-center justify-between px-4 z-20 shrink-0"
+      <header className="h-16 flex items-center justify-between px-4 z-30 shrink-0 relative"
               style={{ 
                 backgroundColor: CONFIG.COLORS.BG_DARK,
                 borderBottom: `4px solid ${CONFIG.COLORS.PINK}`,
@@ -348,11 +448,12 @@ export default function App() {
         <div className="flex items-center gap-3">
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="transition-colors hover:text-white"
+            className="hidden md:block transition-colors hover:text-white"
             style={{ color: CONFIG.COLORS.PINK }}
           >
             {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
+          
           <div className="text-2xl animate-bounce">🕹️</div>
           <div className="flex flex-col justify-center">
             <div className="flex items-center gap-2">
@@ -393,73 +494,148 @@ export default function App() {
         </button>
       </header>
 
-      {/* --- MAIN LAYOUT --- */}
-      <div className="flex flex-col-reverse md:flex-row flex-1 relative overflow-hidden">
+      {/* --- CONTENEUR PRINCIPAL --- */}
+      <div className="flex-1 relative overflow-hidden flex md:flex-row">
         
-        {/* --- SIDEBAR LIST --- */}
-        <div className={`
-          z-10 backdrop-blur-md 
-          border-t md:border-t-0 md:border-r border-gray-800 
-          flex flex-col transition-all duration-300 ease-in-out overflow-hidden
-          w-full
-          ${isSidebarOpen ? 'h-[60%]' : 'h-0'}
-          md:h-full
-          ${isSidebarOpen ? 'md:w-80' : 'md:w-0'}
-        `} style={{ backgroundColor: 'rgba(24, 24, 37, 0.95)' }}>
-          
-          {isLoading ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center gap-4 animate-pulse" style={{ color: CONFIG.COLORS.YELLOW }}>
-               <Loader2 size={32} className="animate-spin" />
-               <p className="font-pixel text-xs leading-relaxed">
-                 CONNEXION AU SATELITE GOOGLE...<br/>
-                 TÉLÉCHARGEMENT DES DONNÉES...
-               </p>
-            </div>
-          ) : (
-            <>
-              <div className="p-4 border-b border-gray-700 flex flex-col gap-3 shrink-0">
-                <div className="relative">
-                  <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+        {/* --- MOBILE UI OVERLAY --- */}
+        <div className="md:hidden absolute inset-0 z-20 pointer-events-none flex flex-col justify-between">
+            
+            <div className="p-4 pointer-events-auto mt-2">
+                <div className="relative shadow-lg rounded-full overflow-hidden">
+                  <Search className="absolute left-4 top-3 text-gray-400" size={18} />
                   <input 
                     type="text" 
                     placeholder={`Rechercher ici ${CONFIG.DEFAULT_COUNTRY.label}...`} 
-                    className="w-full border border-gray-600 rounded p-2 pl-10 text-sm text-white focus:outline-none"
+                    className="w-full border-0 pl-12 pr-12 py-3 text-sm text-white focus:outline-none focus:ring-0 rounded-full"
                     style={{ 
-                        backgroundColor: CONFIG.COLORS.BG_DARK,
-                        borderColor: '#4b5563',
+                        backgroundColor: 'rgba(24, 24, 37, 0.95)',
                     }}
-                    onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.PINK}
-                    onBlur={(e) => e.target.style.borderColor = '#4b5563'}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                   {searchTerm && (
-                    <button onClick={() => setSearchTerm('')} className="absolute right-3 top-2.5 text-gray-500 hover:text-white">
-                      <X size={16} />
+                    <button onClick={() => setSearchTerm('')} className="absolute right-4 top-3 text-gray-500 hover:text-white">
+                      <X size={18} />
                     </button>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-1.5 pb-2">
+                
+                <div className="flex gap-2 mt-3 overflow-x-auto pb-2 hide-scrollbar px-1">
                     {AVAILABLE_TAGS.map(tag => (
                         <button
                             key={tag}
                             onClick={(e) => searchByTag(e, tag)}
-                            className={`px-2 py-1 text-[8px] rounded-full border transition-all font-medium font-pixel`}
+                            className="px-3 py-1.5 text-[10px] rounded-full border transition-all font-medium font-pixel whitespace-nowrap shadow-sm"
                             style={{
-                                backgroundColor: searchTerm === tag ? CONFIG.COLORS.PINK : '#1e1e2e',
+                                backgroundColor: searchTerm === tag ? CONFIG.COLORS.PINK : 'rgba(30, 30, 46, 0.9)',
                                 color: searchTerm === tag ? 'white' : '#9ca3af',
-                                borderColor: searchTerm === tag ? CONFIG.COLORS.PINK : '#4b5563',
-                                boxShadow: searchTerm === tag ? `0 0 8px ${CONFIG.COLORS.PINK}` : 'none'
+                                borderColor: searchTerm === tag ? CONFIG.COLORS.PINK : 'transparent',
                             }}
                         >
                             {tag}
                         </button>
                     ))}
                 </div>
-              </div>
+            </div>
 
-              <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                {filteredShops.map(shop => (
+            <div 
+                className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
+                style={{ 
+                    height: isDrawerExpanded ? '80%' : '160px',
+                }}
+            >
+                <div 
+                    className="w-full flex justify-center items-center p-2 cursor-pointer hover:bg-white/5 rounded-t-3xl pt-3"
+                    onClick={toggleDrawer}
+                >
+                    <div className="w-10 h-1 bg-gray-500 rounded-full mb-1"></div>
+                </div>
+                <div className="text-center text-[10px] text-gray-500 font-pixel mb-3 uppercase tracking-wider" onClick={toggleDrawer}>
+                    {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques à proximité`}
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 pt-0 space-y-3 pb-8">
+                    {filteredShops.map(shop => (
+                        <div 
+                            key={shop.id}
+                            onClick={() => flyToShop(shop)}
+                            className={`p-3 rounded-xl border cursor-pointer transition-all ${selectedShop?.id === shop.id ? '' : 'bg-[#1e1e2e] border-gray-700'}`}
+                            style={selectedShop?.id === shop.id ? {
+                                backgroundColor: `${CONFIG.COLORS.PINK}20`,
+                                borderColor: CONFIG.COLORS.PINK,
+                                boxShadow: `inset 0 0 10px ${CONFIG.COLORS.PINK}33`
+                            } : {}}
+                        >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="font-bold text-sm uppercase tracking-wide shop-name-color">{shop.name}</h3>
+                              {shop.hallOfFame && (
+                                <span className="text-black text-[8px] px-1.5 py-0.5 font-pixel flex items-center gap-1 rounded-sm" style={{ backgroundColor: CONFIG.COLORS.YELLOW }}>
+                                  <Crown size={8} />
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 text-gray-400 text-xs mt-1">
+                              <MapPin size={12} /> {shop.city}
+                            </div>
+                        </div>
+                    ))}
+                     {filteredShops.length === 0 && (
+                        <div className="text-center p-4 text-gray-500 text-sm">
+                            Aucune boutique trouvée...
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+
+
+        {/* --- DESKTOP SIDEBAR --- */}
+        <div className={`
+          hidden md:flex z-10 bg-[#181825]/95 backdrop-blur-md 
+          border-r border-gray-800 
+          flex-col transition-all duration-300 ease-in-out overflow-hidden
+          h-full
+          ${isSidebarOpen ? 'w-80' : 'w-0'}
+        `}>
+          <div className="p-4 border-b border-gray-700 flex flex-col gap-3 shrink-0">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+              <input 
+                type="text" 
+                placeholder={`Rechercher...`} 
+                className="w-full bg-[#11111b] border border-gray-600 rounded p-2 pl-10 text-sm text-white focus:outline-none"
+                style={{ borderColor: '#4b5563' }}
+                onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.PINK}
+                onBlur={(e) => e.target.style.borderColor = '#4b5563'}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              {searchTerm && (
+                <button onClick={() => setSearchTerm('')} className="absolute right-3 top-2.5 text-gray-500 hover:text-white">
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+                {AVAILABLE_TAGS.map(tag => (
+                    <button
+                        key={tag}
+                        onClick={(e) => searchByTag(e, tag)}
+                        className={`px-2 py-1 text-[8px] rounded-full border transition-all font-medium font-pixel`}
+                        style={{
+                            backgroundColor: searchTerm === tag ? CONFIG.COLORS.PINK : '#1e1e2e',
+                            color: searchTerm === tag ? 'white' : '#9ca3af',
+                            borderColor: searchTerm === tag ? CONFIG.COLORS.PINK : '#4b5563',
+                        }}
+                    >
+                        {tag}
+                    </button>
+                ))}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-2 space-y-2">
+             {filteredShops.map(shop => (
                   <div 
                     key={shop.id}
                     onClick={() => flyToShop(shop)}
@@ -476,7 +652,7 @@ export default function App() {
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-bold text-sm uppercase tracking-wide shop-name-color">{shop.name}</h3>
                       {shop.hallOfFame && (
-                        <span className="text-black text-[8px] px-1.5 py-0.5 font-pixel flex items-center gap-1 shadow-[1px_1px_0_rgba(0,0,0,0.5)]" style={{ backgroundColor: CONFIG.COLORS.YELLOW }}>
+                        <span className="text-black text-[8px] px-1.5 py-0.5 font-pixel flex items-center gap-1" style={{ backgroundColor: CONFIG.COLORS.YELLOW }}>
                           <Crown size={8} /> HALL OF FAME
                         </span>
                       )}
@@ -494,52 +670,64 @@ export default function App() {
                               borderColor: searchTerm === tag ? CONFIG.COLORS.PINK : '#374151',
                               color: searchTerm === tag ? CONFIG.COLORS.PINK : '#9ca3af'
                           }}
-                          onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = CONFIG.COLORS.PINK;
-                              e.currentTarget.style.color = CONFIG.COLORS.PINK;
-                          }}
-                          onMouseLeave={(e) => {
-                             if (searchTerm !== tag) {
-                                e.currentTarget.style.borderColor = '#374151';
-                                e.currentTarget.style.color = '#9ca3af';
-                             }
-                          }}
                         >
                           {tag}
                         </span>
                       ))}
-                      {shop.tags && shop.tags.length > 3 && <span className="text-[9px] text-gray-500">...</span>}
                     </div>
                   </div>
                 ))}
-                
-                {filteredShops.length === 0 && (
-                  <div className="text-center p-8 text-gray-500 text-sm">
-                    Aucune boutique trouvée pour "{searchTerm}" ici {CONFIG.DEFAULT_COUNTRY.label}.<br/>
-                    <button onClick={() => setSearchTerm('')} style={{ color: CONFIG.COLORS.PINK }} className="underline mt-2">Effacer le filtre</button>
-                  </div>
-                )}
-              </div>
-
-              <div className="p-3 text-[10px] text-gray-500 text-center border-t border-gray-800 font-pixel shrink-0">
-                {filteredShops.length} BOUTIQUES {CONFIG.DEFAULT_COUNTRY.label}
-              </div>
-            </>
-          )}
+          </div>
+           <div className="p-3 text-[10px] text-gray-500 text-center border-t border-gray-800 font-pixel shrink-0">
+                {filteredShops.length} BOUTIQUES
+            </div>
         </div>
 
+
         {/* --- MAP CONTAINER --- */}
-        <div className="flex-1 relative bg-[#0f0f15] min-h-0">
+        <div className="flex-1 relative bg-[#0f0f15] h-full overflow-hidden">
           <div id="map" ref={mapRef} className="w-full h-full z-0 grayscale-[20%] contrast-[1.1]" />
           
-          {/* --- INFO PANEL --- */}
-          {selectedShop && (
+          {/* CONTROLES GOOGLE MAPS STYLE */}
+          <div className="custom-map-controls pointer-events-auto">
+             <button 
+                className="reset-view-btn"
+                onClick={resetMapToDefault}
+                title="Vue globale"
+             >
+                <Globe size={20} />
+             </button>
+             
+             <div className="zoom-buttons">
+                 <button 
+                    className="zoom-btn"
+                    onClick={handleZoomIn}
+                    title="Zoom avant"
+                 >
+                    <Plus size={20} />
+                 </button>
+                 
+                 <button 
+                    className="zoom-btn"
+                    onClick={handleZoomOut}
+                    title="Zoom arrière"
+                 >
+                    <Minus size={20} />
+                 </button>
+             </div>
+          </div>
+
+          {/* --- INFO PANEL (Tuile) --- */}
+          {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        bottom-1 left-1 right-1 md:left-auto md:right-4 md:bottom-4 md:w-96 
+                        /* Position mobile: au dessus du drawer réduit + marge droite */
+                        bottom-[170px] left-2 right-14
+                        /* Position desktop: ancré en bas à droite avec largeur fixe */
+                        md:left-auto md:right-16 md:bottom-4 md:w-96 
                         bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 md:rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: '#d8b4fe' }}>
                <button 
-                onClick={() => flyToShop(selectedShop)}
+                onClick={() => {setSelectedShop(null); if(mapInstanceRef.current) mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });}}
                 className="absolute top-2 right-2 text-gray-500 hover:text-white"
               >
                 <X size={18} />
@@ -560,25 +748,6 @@ export default function App() {
               <p className="text-gray-300 text-sm mb-4 leading-relaxed">
                 {selectedShop.description}
               </p>
-              
-              {selectedShop.tags && (
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {selectedShop.tags.map((tag, idx) => (
-                    <button 
-                      key={idx} 
-                      onClick={(e) => searchByTag(e, tag)}
-                      className="text-[10px] font-pixel border px-2 py-1 bg-opacity-10 hover:bg-opacity-30 transition-all cursor-pointer"
-                      style={{ 
-                        color: searchTerm === tag ? CONFIG.COLORS.PINK : CONFIG.COLORS.CYAN, 
-                        borderColor: searchTerm === tag ? CONFIG.COLORS.PINK : CONFIG.COLORS.CYAN, 
-                        backgroundColor: searchTerm === tag ? `${CONFIG.COLORS.PINK}20` : `${CONFIG.COLORS.CYAN}20` 
-                      }}
-                    >
-                      {tag}
-                    </button>
-                  ))}
-                </div>
-              )}
               
               <div className="space-y-2 text-xs text-gray-400 bg-black/30 p-3 rounded border border-gray-800">
                 <div className="flex gap-2">
@@ -606,18 +775,18 @@ export default function App() {
         </div>
       </div>
 
-      {/* --- MODAL DE PROPOSITION --- */}
+      {/* --- MODAL DE PROPOSITION (Inchangée) --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#181825] border-2 w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8" style={{ borderColor: CONFIG.COLORS.YELLOW }}>
+          <div className={`bg-[#181825] border-2 border-[${CONFIG.COLORS.YELLOW}] w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8`}>
             <button 
               onClick={() => setIsModalOpen(false)}
-              className="absolute top-3 right-3 text-gray-500 hover:text-white"
+              className={`absolute top-3 right-3 text-gray-500 hover:text-[${CONFIG.COLORS.YELLOW}]`}
             >
               <X size={24} />
             </button>
 
-            <h2 className="font-pixel text-xs mb-6 text-center border-b border-gray-700 pb-4" style={{ color: CONFIG.COLORS.YELLOW }}>
+            <h2 className={`font-pixel text-[${CONFIG.COLORS.YELLOW}] text-xs mb-6 text-center border-b border-gray-700 pb-4`}>
               Let's go hunt !
             </h2>
 
@@ -642,10 +811,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
-                      style={{ borderColor: '#374151' }}
-                      onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
-                      onBlur={(e) => e.target.style.borderColor = '#374151'}
+                      className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors text-sm`}
                       placeholder="Ex: Super Potato"
                       value={newShopForm.name}
                       onChange={e => setNewShopForm({...newShopForm, name: e.target.value})}
@@ -656,10 +822,7 @@ export default function App() {
                     <input 
                       required
                       type="text" 
-                      className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
-                      style={{ borderColor: '#374151' }}
-                      onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
-                      onBlur={(e) => e.target.style.borderColor = '#374151'}
+                      className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors text-sm`}
                       placeholder="Ex: Tokyo, Japon"
                       value={newShopForm.city}
                       onChange={e => setNewShopForm({...newShopForm, city: e.target.value})}
@@ -672,10 +835,7 @@ export default function App() {
                   <input 
                     required
                     type="text" 
-                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors text-sm"
-                    style={{ borderColor: '#374151' }}
-                    onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
-                    onBlur={(e) => e.target.style.borderColor = '#374151'}
+                    className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors text-sm`}
                     placeholder="Ex: 1 Chome-11-2 Sotokanda, Chiyoda City"
                     value={newShopForm.address}
                     onChange={e => setNewShopForm({...newShopForm, address: e.target.value})}
@@ -692,13 +852,12 @@ export default function App() {
                         key={tag}
                         type="button"
                         onClick={() => toggleTag(tag)}
-                        className="text-[10px] px-2 py-1 rounded border transition-all font-medium"
-                        style={{ 
-                            backgroundColor: newShopForm.tags.includes(tag) ? CONFIG.COLORS.YELLOW : '#181825',
-                            color: newShopForm.tags.includes(tag) ? 'black' : '#9ca3af',
-                            borderColor: newShopForm.tags.includes(tag) ? CONFIG.COLORS.YELLOW : '#4b5563',
-                            boxShadow: newShopForm.tags.includes(tag) ? `0 0 10px ${CONFIG.COLORS.YELLOW}4D` : 'none'
-                        }}
+                        className={`
+                          text-[10px] px-2 py-1 rounded border transition-all font-medium
+                          ${newShopForm.tags.includes(tag) 
+                            ? `bg-[${CONFIG.COLORS.YELLOW}] text-black border-[${CONFIG.COLORS.YELLOW}] shadow-[0_0_10px_rgba(250,204,21,0.3)]` 
+                            : 'bg-[#181825] text-gray-400 border-gray-600 hover:border-gray-400'}
+                        `}
                       >
                         {tag}
                       </button>
@@ -712,10 +871,7 @@ export default function App() {
                 <div>
                   <label className="block text-xs uppercase text-gray-500 mb-1 font-bold">Infos complémentaires</label>
                   <textarea 
-                    className="w-full bg-black border border-gray-700 text-white p-3 outline-none transition-colors h-20 resize-none text-sm"
-                    style={{ borderColor: '#374151' }}
-                    onFocus={(e) => e.target.style.borderColor = CONFIG.COLORS.YELLOW}
-                    onBlur={(e) => e.target.style.borderColor = '#374151'}
+                    className={`w-full bg-black border border-gray-700 text-white p-3 focus:border-[${CONFIG.COLORS.YELLOW}] outline-none transition-colors h-20 resize-none text-sm`}
                     placeholder="Pourquoi cette boutique est top ? Horaires spécifiques ? Anecdote ?"
                     value={newShopForm.note}
                     onChange={e => setNewShopForm({...newShopForm, note: e.target.value})}
@@ -725,8 +881,7 @@ export default function App() {
                 <button 
                   disabled={submitStatus === 'loading'}
                   type="submit" 
-                  className={`w-full text-black font-pixel text-[10px] py-4 transition-colors uppercase disabled:opacity-50 disabled:cursor-wait shadow-[0_4px_0_#b45309] active:shadow-none active:translate-y-1 ${submitStatus === 'loading' ? 'cursor-wait' : ''}`}
-                  style={{ backgroundColor: CONFIG.COLORS.YELLOW }}
+                  className={`w-full bg-[${CONFIG.COLORS.YELLOW}] text-black font-pixel text-[10px] py-4 hover:bg-yellow-300 transition-colors uppercase disabled:opacity-50 disabled:cursor-wait shadow-[0_4px_0_#b45309] active:shadow-none active:translate-y-1 ${submitStatus === 'loading' ? 'cursor-wait' : ''}`}
                 >
                   {submitStatus === 'loading' ? 'ENVOI EN COURS...' : 'ENVOYER LA PROPOSITION'}
                 </button>
