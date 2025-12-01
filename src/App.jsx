@@ -128,8 +128,8 @@ export default function App() {
 
     if (window.innerWidth < 768) {
         const point = map.project([shop.lat, shop.lng], targetZoom);
-        // Offset ajusté (plus grand car tiroir plus haut)
-        point.y = point.y + 120; 
+        // Offset ajusté pour la nouvelle hauteur du tiroir compact (135px)
+        point.y = point.y + 80; 
         const targetLatLng = map.unproject(point, targetZoom);
         
         map.flyTo(targetLatLng, targetZoom, { duration: 1.5 });
@@ -373,8 +373,8 @@ export default function App() {
     const newHeight = dragStartHeight.current + deltaY;
     
     const maxHeight = window.innerHeight * 0.85;
-    // MODIF : Hauteur minimale passée à 180px
-    if (newHeight >= 180 && newHeight <= maxHeight) {
+    // MODIF : Hauteur minimale ajustée à 135px pour être plus compact sur navigateur
+    if (newHeight >= 135 && newHeight <= maxHeight) {
         drawerRef.current.style.height = `${newHeight}px`;
     }
   };
@@ -394,13 +394,13 @@ export default function App() {
             drawerRef.current.style.height = '85%';
         } else {
             setIsDrawerExpanded(false);
-            drawerRef.current.style.height = '180px'; // MODIF : 180px
+            drawerRef.current.style.height = '135px'; // MODIF : 135px
         }
     } else {
         if (isDrawerExpanded) {
              drawerRef.current.style.height = '85%';
         } else {
-             drawerRef.current.style.height = '180px'; // MODIF : 180px
+             drawerRef.current.style.height = '135px'; // MODIF : 135px
         }
     }
   };
@@ -415,7 +415,6 @@ export default function App() {
   // --- 5. RENDU ---
 
   return (
-    // MODIF : h-[100dvh] et fixed inset-0 pour éviter le scroll du body sur mobile
     <div className="flex flex-col h-[100dvh] w-screen text-gray-100 font-sans overflow-hidden fixed inset-0 overscroll-none" style={{ backgroundColor: CONFIG.COLORS.BG_DARK }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Press+Start+2P&display=swap');
@@ -497,7 +496,7 @@ export default function App() {
 
         @media (max-width: 768px) {
             .custom-map-controls {
-                bottom: 195px !important; /* MODIF: 180 + 15 = 195px */
+                bottom: 155px !important; /* MODIF: 135px + 20px marge */
                 right: 10px;
             }
         }
@@ -563,7 +562,6 @@ export default function App() {
       <div className="flex-1 relative overflow-hidden flex md:flex-row">
         
         {/* --- MOBILE UI OVERLAY (Recherche + Drawer) --- */}
-        {/* MODIF: Z-INDEX 2000 POUR PASSER AU DESSUS DE TOUT (sauf header/modal) */}
         <div className="md:hidden absolute inset-0 z-[2000] pointer-events-none flex flex-col justify-between">
             
             {/* 1. BARRE DE RECHERCHE FLOTTANTE */}
@@ -613,9 +611,9 @@ export default function App() {
                 ref={drawerRef}
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
                 style={{ 
-                    height: isDrawerExpanded ? '85%' : '180px', // MODIF : 180px
+                    height: isDrawerExpanded ? '85%' : '135px', // MODIF : 135px pour être plus compact
                     touchAction: 'none',
-                    // Pas de z-index ici, hérite du parent (2000)
+                    zIndex: 2000
                 }}
             >
                 {/* Poignée du tiroir (Zone de swipe) */}
@@ -825,8 +823,8 @@ export default function App() {
           {/* Affiché seulement si sélectionné ET tiroir réduit */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* MODIF : Remonté à 195px (180px + 15px marge) */
-                        bottom-[195px] left-4 right-[66px] 
+                        /* MODIF : Remonté à 145px pour matcher le tiroir */
+                        bottom-[145px] left-4 right-[66px] 
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
                         bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: CONFIG.COLORS.PINK }}>
@@ -890,7 +888,7 @@ export default function App() {
               <X size={24} />
             </button>
 
-            <h2 className={`font-pixel text-xs mb-6 text-center border-b border-gray-700 pb-4`} style={{ color: CONFIG.COLORS.YELLOW }}>
+            <h2 className={`font-pixel text-[${CONFIG.COLORS.YELLOW}] text-xs mb-6 text-center border-b border-gray-700 pb-4`} style={{ color: CONFIG.COLORS.YELLOW }}>
               Let's go hunt !
             </h2>
 
