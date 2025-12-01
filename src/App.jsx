@@ -33,16 +33,19 @@ const AVAILABLE_TAGS = [
   "Rétrogaming", "Next Gen", "Import Japon", "Arcade", "Figurines", "Réparations", "Goodies"
 ];
 
-// CORRECTION DÉFINITIVE : Fonction de sécurité standard
+// Fonction de sécurité standard
 const escapeHtml = (unsafe) => {
   if (!unsafe) return "";
-  return unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+  const map = {
+    '&': '&',
+    '<': '<',
+    '>': '>',
+    '"': '"',
+    "'": "'"
+  };
+  return unsafe.replace(/[&<>"']/g, (m) => map[m]);
 };
+
 // ==================================================================================
 
 export default function App() {
@@ -51,18 +54,49 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedShop, setSelectedShop] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true); 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDrawerExpanded, setIsDrawerExpanded] = useState(false);
+
+  // États pour le swipe
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchEnd, setTouchEnd] = useState(null);
 
   const [newShopForm, setNewShopForm] = useState({ 
     name: '', city: '', address: '', tags: [], note: '' 
   });
   const [submitStatus, setSubmitStatus] = useState(null);
 
+  // Refs
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef({});
+
+  // --- GESTION DU SWIPE SUR LE TIROIR ---
+  const minSwipeDistance = 50;
+
+  const onTouchStart = (e) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientY);
+  };
+
+  const onTouchMove = (e) => {
+    setTouchEnd(e.targetTouches[0].clientY);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isUpSwipe = distance > minSwipeDistance;
+    const isDownSwipe = distance < -minSwipeDistance;
+
+    if (isUpSwipe) {
+      setIsDrawerExpanded(true);
+    }
+    if (isDownSwipe) {
+      setIsDrawerExpanded(false);
+    }
+  };
 
   // --- 1. CHARGEMENT DES DONNÉES ---
   useEffect(() => {
@@ -110,6 +144,35 @@ export default function App() {
 
   // --- 2. GESTION DE LA CARTE ---
   
+  // Fonction intelligente pour zoomer avec un décalage (offset) sur mobile
+  // afin que le point ne soit pas caché par le panneau du bas
+  const flyToShopWithOffset = useCallback((shop) => {
+    if (!mapInstanceRef.current || !shop.lat || !shop.lng) return;
+
+    const map = mapInstanceRef.current;
+    const targetZoom = 15; // Zoom assez proche pour bien voir
+
+    if (window.innerWidth < 768) {
+        // SUR MOBILE : On calcule un décalage
+        // On projette les coordonnées Lat/Lng en pixels
+        const point = map.project([shop.lat, shop.lng], targetZoom);
+        // On décale le point cible vers le bas (donc la caméra vers le haut) de 150 pixels
+        // Cela permet au vrai point d'être plus haut sur l'écran
+        point.y = point.y + 150; 
+        // On reconvertit en Lat/Lng
+        const targetLatLng = map.unproject(point, targetZoom);
+        
+        map.flyTo(targetLatLng, targetZoom, { duration: 1.5 });
+    } else {
+        // SUR DESKTOP : Comportement normal
+        map.flyTo([shop.lat, shop.lng], targetZoom, { duration: 1.5 });
+    }
+
+    const marker = markersRef.current[shop.id];
+    if (marker) marker.openPopup();
+
+  }, []);
+
   const flyToShop = useCallback((shop) => {
     if (selectedShop && selectedShop.id === shop.id) {
         setSelectedShop(null);
@@ -118,14 +181,9 @@ export default function App() {
         if (window.innerWidth < 768) {
             setIsDrawerExpanded(false);
         }
-        
-        if (mapInstanceRef.current && shop.lat && shop.lng) {
-            mapInstanceRef.current.flyTo([shop.lat, shop.lng], 13, { duration: 1.5 });
-            const marker = markersRef.current[shop.id];
-            if (marker) marker.openPopup();
-        }
+        flyToShopWithOffset(shop);
     }
-  }, [selectedShop]);
+  }, [selectedShop, flyToShopWithOffset]);
 
   const resetMapToDefault = useCallback(() => {
     if (mapInstanceRef.current) {
@@ -206,7 +264,7 @@ export default function App() {
     if (!window.L || mapInstanceRef.current) return;
     
     const map = window.L.map(mapRef.current, {
-        zoomControl: false 
+        zoomControl: false
     }).setView(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom);
     
     mapInstanceRef.current = map;
@@ -357,7 +415,6 @@ export default function App() {
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .cursor-wait { cursor: wait; }
         
-        /* --- STYLE GOOGLE MAPS PUR --- */
         .custom-map-controls {
             position: absolute;
             bottom: 24px;
@@ -369,14 +426,13 @@ export default function App() {
             gap: 10px;
         }
 
-        /* 1. BOUTON RESET (GLOBE) : Carré blanc, coins arrondis, ombre */
         .reset-view-btn {
             width: 40px;
             height: 40px;
             background-color: white;
             color: #666666;
             border: none;
-            border-radius: 8px; /* Style Google */
+            border-radius: 8px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             display: flex;
             align-items: center;
@@ -389,12 +445,11 @@ export default function App() {
             color: #333333;
         }
 
-        /* 2. GROUPE ZOOM : Pilule/Rectangle arrondi, séparateur interne */
         .zoom-buttons {
             display: flex;
             flex-direction: column;
             background: white;
-            border-radius: 8px; /* Style Google standard */
+            border-radius: 8px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             overflow: hidden;
         }
@@ -405,40 +460,26 @@ export default function App() {
             background-color: white;
             color: #666666;
             border: none;
+            border-bottom: 1px solid #e6e6e6;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: background-color 0.2s;
+            transition: all 0.2s;
             position: relative;
         }
-        
-        /* Petit trait de séparation entre + et - */
-        .zoom-btn:first-child::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 5px;
-            right: 5px;
-            height: 1px;
-            background-color: #e6e6e6;
-        }
+        .zoom-btn:last-child::after { display: none; }
+        .zoom-btn:hover { background-color: #f3f3f3; color: #333333; }
 
-        .zoom-btn:hover {
-            background-color: #f3f3f3;
-            color: #333333;
-        }
-
-        /* --- FIX MOBILE : Remonter les boutons au-dessus du tiroir --- */
         @media (max-width: 768px) {
             .custom-map-controls {
                 bottom: 180px !important; 
-                right: 12px;
+                right: 10px;
             }
         }
       `}</style>
 
-      {/* --- HEADER --- */}
+      {/* --- HEADER (Fixe) --- */}
       <header className="h-16 flex items-center justify-between px-4 z-30 shrink-0 relative"
               style={{ 
                 backgroundColor: CONFIG.COLORS.BG_DARK,
@@ -497,9 +538,10 @@ export default function App() {
       {/* --- CONTENEUR PRINCIPAL --- */}
       <div className="flex-1 relative overflow-hidden flex md:flex-row">
         
-        {/* --- MOBILE UI OVERLAY --- */}
+        {/* --- MOBILE UI OVERLAY (Recherche + Drawer) --- */}
         <div className="md:hidden absolute inset-0 z-20 pointer-events-none flex flex-col justify-between">
             
+            {/* 1. BARRE DE RECHERCHE FLOTTANTE */}
             <div className="p-4 pointer-events-auto mt-2">
                 <div className="relative shadow-lg rounded-full overflow-hidden">
                   <Search className="absolute left-4 top-3 text-gray-400" size={18} />
@@ -520,6 +562,7 @@ export default function App() {
                   )}
                 </div>
                 
+                {/* Tags de filtre */}
                 <div className="flex gap-2 mt-3 overflow-x-auto pb-2 hide-scrollbar px-1">
                     {AVAILABLE_TAGS.map(tag => (
                         <button
@@ -538,12 +581,18 @@ export default function App() {
                 </div>
             </div>
 
+            {/* 2. TIROIR (DRAWER) EN BAS */}
             <div 
                 className={`pointer-events-auto bg-[#181825]/95 backdrop-blur-md border-t border-gray-700 rounded-t-3xl transition-all duration-300 ease-in-out flex flex-col shadow-[0_-5px_20px_rgba(0,0,0,0.5)]`}
+                // Ajout des événements tactiles pour le swipe
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
                 style={{ 
                     height: isDrawerExpanded ? '80%' : '160px',
                 }}
             >
+                {/* Poignée du tiroir */}
                 <div 
                     className="w-full flex justify-center items-center p-2 cursor-pointer hover:bg-white/5 rounded-t-3xl pt-3"
                     onClick={toggleDrawer}
@@ -554,6 +603,7 @@ export default function App() {
                     {isDrawerExpanded ? 'Réduire' : `${filteredShops.length} boutiques à proximité`}
                 </div>
 
+                {/* Contenu du tiroir */}
                 <div className="flex-1 overflow-y-auto p-4 pt-0 space-y-3 pb-8">
                     {filteredShops.map(shop => (
                         <div 
@@ -720,11 +770,11 @@ export default function App() {
           {/* --- INFO PANEL (Tuile) --- */}
           {selectedShop && !isDrawerExpanded && (
             <div className="absolute 
-                        /* Position mobile: au dessus du drawer réduit + marge droite */
-                        bottom-[170px] left-2 right-14
+                        /* Position mobile: au dessus du drawer réduit + marge droite pour éviter boutons */
+                        bottom-[170px] left-4 right-[66px]
                         /* Position desktop: ancré en bas à droite avec largeur fixe */
                         md:left-auto md:right-16 md:bottom-4 md:w-96 
-                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 md:rounded-lg p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
+                        bg-[#11111b]/95 backdrop-blur border-t-4 md:border-2 md:rounded-3xl p-3 md:p-5 z-[401] shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
                  style={{ borderColor: '#d8b4fe' }}>
                <button 
                 onClick={() => {setSelectedShop(null); if(mapInstanceRef.current) mapInstanceRef.current.flyTo(CONFIG.DEFAULT_COUNTRY.center, CONFIG.DEFAULT_COUNTRY.zoom, { duration: 1.5 });}}
@@ -775,7 +825,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* --- MODAL DE PROPOSITION (Inchangée) --- */}
+      {/* --- MODAL DE PROPOSITION --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className={`bg-[#181825] border-2 border-[${CONFIG.COLORS.YELLOW}] w-full max-w-lg p-6 relative shadow-[0_0_30px_rgba(250,204,21,0.2)] my-8`}>
